@@ -79,7 +79,7 @@ export default function StatusView() {
     presenceMut.mutate({ text: presenceText.trim(), type: presenceType });
   };
 
-  if (isLoading) return <LoadingFallback text="Loading telemetry..." />;
+  if (isLoading) return <LoadingFallback text="Loading status..." />;
   if (error || !data) return <ErrorRetry message="Failed to load bot status" onRetry={() => window.location.reload()} />;
 
   const memPct = data.memoryTotalMb > 0 ? Math.round((data.memoryUsedMb / data.memoryTotalMb) * 100) : 0;

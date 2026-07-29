@@ -69,7 +69,7 @@ export default function App() {
         <Route
           path="overview"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Overview Telemetry..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading overview..." />}>
               <Overview />
             </Suspense>
           }
@@ -140,5 +140,4 @@ export default function App() {
     </Routes>
   );
 }
-
 

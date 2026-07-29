@@ -1,13 +1,13 @@
 {
-  "name": "ggboi",
+  "name": "mitto",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "node scripts/dev.js",
     "bot": "node index.js",
-    "dashboard": "npm --prefix dashboard run dev",
-    "build:dashboard": "cd dashboard && npm ci && npm run build",
+    "dashboard": "npm --prefix dashboard-v2 run dev",
+    "build:dashboard": "cd dashboard-v2 && npm ci && npm run build",
     "build": "npm run build:dashboard"
   },
   "dependencies": {

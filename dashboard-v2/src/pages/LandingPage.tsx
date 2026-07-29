@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Terminal, Shield, Sparkles, Zap, ArrowRight } from "lucide-react";
+import { Shield, MessageCircle, Zap, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/animations/FadeIn";
 
@@ -11,9 +11,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
-              <Terminal className="size-5 text-primary" />
+              <span className="font-bold text-primary">M</span>
             </div>
-            <span className="font-semibold text-lg tracking-tight">ggboi</span>
+            <span className="font-semibold text-lg tracking-tight">Mitto</span>
           </div>
           <nav className="flex items-center gap-6">
             <Link to="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
@@ -21,7 +21,7 @@ export default function LandingPage() {
             </Link>
             <Link to="/login">
               <Button size="sm" className="font-semibold">
-                Control Panel
+                Open workspace
               </Button>
             </Link>
           </nav>
@@ -31,21 +31,21 @@ export default function LandingPage() {
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-4xl mx-auto py-20">
         <FadeIn delay={0} y={12}>
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 animate-pulse">
-            <Sparkles className="size-3.5" />
-            ggboi Dashboard v2 is now live
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6">
+            <span className="size-1.5 rounded-full bg-primary" />
+            A better way to run your server
           </div>
         </FadeIn>
 
         <FadeIn delay={0.05} y={12}>
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
-            The ultimate control deck for <span className="text-primary">ggboi</span>
+            Your server, <span className="text-primary">in good hands.</span>
           </h1>
         </FadeIn>
 
         <FadeIn delay={0.1} y={12}>
           <p className="text-muted-foreground text-lg max-w-2xl mb-8">
-            Manage your server, configure advanced automation rules, review cases, and supervise the AI assistant from a unified flight telemetry control panel.
+            Mitto brings moderation, community tools, automation, and helpful AI features into one clear workspace.
           </p>
         </FadeIn>
 
@@ -70,17 +70,17 @@ export default function LandingPage() {
           {[
             {
               icon: Shield,
-              title: "Ops-Level Moderation",
+              title: "Keep things healthy",
               desc: "Real-time automod rule builder, case evidence viewer, anti-raid gates, and active warning manager."
             },
             {
-              icon: Sparkles,
-              title: "Integrated AI Assistant",
+              icon: MessageCircle,
+              title: "Make community easier",
               desc: "Supervise user conversations, search long-term AI memories, manage prompt packs, and review analytics."
             },
             {
               icon: Zap,
-              title: "Automated Operations",
+              title: "Automate the busywork",
               desc: "Visual autoexec rule trigger engine, scheduled tasks, economy shop control, and server snapshot backups."
             }
           ].map((feature, i) => (
@@ -102,7 +102,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border/20 py-8">
         <div className="max-w-7xl mx-auto px-4 text-center text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} ggboi. All rights reserved. Designed for flight-deck telemetry.
+          &copy; {new Date().getFullYear()} Mitto. Built for communities.
         </div>
       </footer>
     </div>

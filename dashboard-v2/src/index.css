@@ -2,31 +2,29 @@
 @import "tw-animate-css";
 
 /* ════════════════════════════════════════════════════════════════════════════
-   ggboi Dashboard v2 — Design tokens
-   Ported from v1's zinc/indigo dark system (styles.css) into Tailwind v4.
-   Dark-only for now; the shadcn variable names are kept so vendored ui/
-   primitives work unmodified.
+   Mitto — Design tokens
+   A calm, practical workspace for running a Discord community.
    ════════════════════════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Surfaces (v1: --bg / --bg-alt / --surface family) ── */
-  --background: #09090b;
-  --background-alt: #0f0f12;
-  --foreground: #fafafa;
-  --card: #131316;
-  --card-foreground: #fafafa;
-  --popover: #18181b;
-  --popover-foreground: #fafafa;
+  --background: #11110f;
+  --background-alt: #181714;
+  --foreground: #f4f0e8;
+  --card: #1b1a17;
+  --card-foreground: #f4f0e8;
+  --popover: #23211d;
+  --popover-foreground: #f4f0e8;
 
-  /* ── Accent (v1: indigo #6366f1) ── */
-  --primary: #6366f1;
+  /* ── Accent ── */
+  --primary: #d98566;
   --primary-foreground: #ffffff;
-  --secondary: #1c1c21;
-  --secondary-foreground: #d4d4d8;
-  --muted: #1c1c21;
-  --muted-foreground: #a1a1aa;
-  --accent: #252529;
-  --accent-foreground: #fafafa;
+  --secondary: #28251f;
+  --secondary-foreground: #ded7ca;
+  --muted: #28251f;
+  --muted-foreground: #aaa196;
+  --accent: #302b25;
+  --accent-foreground: #f4f0e8;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
 
@@ -62,23 +60,23 @@
   --category-fallback: #a1a1aa;
 
   /* ── Lines & focus ── */
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: rgba(99, 102, 241, 0.55);
+  --border: rgba(244, 240, 232, 0.11);
+  --input: rgba(244, 240, 232, 0.14);
+  --ring: rgba(217, 133, 102, 0.55);
 
   /* ── Charts ── */
-  --chart-1: #6366f1;
-  --chart-2: #f59e0b;
-  --chart-3: #ec4899;
-  --chart-4: #10b981;
-  --chart-5: #3b82f6;
+  --chart-1: #d98566;
+  --chart-2: #e5b86d;
+  --chart-3: #b99acb;
+  --chart-4: #8fbd9a;
+  --chart-5: #82a9bd;
 
   /* ── Sidebar ── */
-  --sidebar: #0f0f12;
-  --sidebar-foreground: #a1a1aa;
-  --sidebar-accent: #1c1c21;
-  --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar: #171613;
+  --sidebar-foreground: #aaa196;
+  --sidebar-accent: #28251f;
+  --sidebar-accent-foreground: #f4f0e8;
+  --sidebar-border: rgba(244, 240, 232, 0.08);
 
   --radius: 0.5rem;
 }
@@ -154,6 +152,7 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-size: 14px;
+    letter-spacing: -0.005em;
   }
 
   /* Thin dark scrollbars everywhere */
@@ -174,12 +173,9 @@
   }
 }
 
-/* Subtle grid backdrop used by login/landing hero */
+/* Quiet backdrop used by the public pages. */
 .bg-hero-grid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
+  background-image: radial-gradient(circle at 50% -20%, rgba(217, 133, 102, 0.12), transparent 42%);
 }
 
 /* Slow panning grid for hero/landing to give life without distraction */
@@ -188,7 +184,7 @@
   100% { background-position: 40px 40px; }
 }
 .bg-hero-grid--pan {
-  animation: hero-grid-pan 60s linear infinite;
+  animation: none;
 }
 
 /* Pulsing status dot */
@@ -287,7 +283,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.06), transparent 60%);
+  background: radial-gradient(circle at top right, rgba(217, 133, 102, 0.06), transparent 60%);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;

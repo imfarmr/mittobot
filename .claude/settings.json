@@ -1,6 +1,0 @@
-{
-  "enabledPlugins": {
-    "mcp-server-dev@claude-plugins-official": true,
-    "security-guidance@claude-plugins-official": true
-  }
-}

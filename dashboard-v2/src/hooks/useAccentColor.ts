@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "ggboi-dashboard-accent";
-const DEFAULT_ACCENT = "#6366f1";
+const STORAGE_KEY = "mitto-dashboard-accent";
+const LEGACY_STORAGE_KEY = "ggboi-dashboard-accent";
+const DEFAULT_ACCENT = "#d98566";
 
 const PRESETS = [
-  { id: "indigo", label: "Indigo", value: "#6366f1" },
+  { id: "clay", label: "Clay", value: "#d98566" },
   { id: "rose", label: "Rose", value: "#f43f5e" },
   { id: "emerald", label: "Emerald", value: "#10b981" },
   { id: "amber", label: "Amber", value: "#f59e0b" },
@@ -30,7 +31,7 @@ function isValidHex(hex: string): boolean {
 export function useAccentColor() {
   const [color, setColorState] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_ACCENT;
-    return localStorage.getItem(STORAGE_KEY) || DEFAULT_ACCENT;
+    return localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || DEFAULT_ACCENT;
   });
 
   const setColor = (value: string) => {

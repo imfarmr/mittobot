@@ -39,23 +39,37 @@ Missing: `src/main.tsx`, router, shell, all pages — that is what this spec def
 
 ---
 
-## 1. Deployment: Vercel (frontend) + Pterodactyl (bot API)
+## 1. Deployment: Single-Port Serving
+
+The bot and dashboard run as a **single Express process** on one port (`PORT` or `SERVER_PORT`,
+default `3432`). This is the default and recommended path for Pterodactyl and other
+single-port hosts.
+
+- **`src/api/server.js`** serves the built dashboard from `dashboard-v2/dist/` as static
+  files. API routes (`/api/*`) are handled first; everything else falls back to
+  `index.html` for the SPA.
+- **Build the dashboard**: `npm run build` at the repo root builds `dashboard-v2` and
+  outputs to `dashboard-v2/dist`.
+- **No CORS needed** when serving same-origin. `DASHBOARD_ORIGIN` is only required when
+  the dashboard is hosted externally (e.g. Vercel).
+- **Auth flow**: password → `POST /login` → JWT; Discord OAuth → redirect → callback
+  → `{dashOrigin}#token=<jwt>` → hash consumed and stored under `ggboi_token`
+  (v1-compatible: existing sessions carry over).
+
+### 1.1 Optional: Vercel Split Deploy
+
+If you prefer to host the dashboard separately (advanced, not required):
 
 - **Vercel project root**: `dashboard-v2/`. Build `npm run build`, output `dist/`.
 - **`dashboard-v2/vercel.json`**:
   ```json
   { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
   ```
-- **Env on Vercel**: `VITE_BOT_API_URL=https://bot.yourdomain.com` (the Pterodactyl
-  bot's public URL — must be HTTPS; Caddy/nginx in front of `PORT`).
-- **Bot side** (`.env` on Pterodactyl): `DASHBOARD_ORIGIN=https://<app>.vercel.app`
-  (CORS allowlist) and, for OAuth, `DISCORD_REDIRECT_URI=https://bot.yourdomain.com/api/auth/discord/callback`.
-- The bot **also** serves whichever `dist/` exists locally (single-port Pterodactyl
-  mode) — Vercel is the premium path, local serving is the fallback. Cutover:
-  `src/api/server.js` prefers `dashboard-v2/dist` over `dashboard/dist` when present.
-- Auth flow (already implemented in scaffold): password → `POST /login` → JWT;
-  Discord OAuth → redirect → callback → `{dashOrigin}#token=<jwt>` → hash consumed,
-  stored under `ggboi_token` (v1-compatible: existing sessions carry over).
+- **Env on Vercel**: `VITE_BOT_API_URL=https://bot.yourdomain.com`.
+- **Bot side** `.env`: `DASHBOARD_ORIGIN=https://<app>.vercel.app` (CORS allowlist)
+  and `DISCORD_REDIRECT_URI=https://bot.yourdomain.com/api/auth/discord/callback`.
+
+See `scripts/deploy.md` for Docker, PM2, systemd, and reverse-proxy setup.
 
 ---
 
@@ -222,8 +236,10 @@ exist yet; everything else exists today in `src/api/server.js`.
 - **System/Status**: `GET /api/status` + SSE heartbeat, `POST /api/presence` — stat grid,
   process health, presence editor. **Settings**: `GET/POST /api/settings`,
   `POST /api/settings/reset` — grouped global settings incl. prefix. **Modules**:
-  module CRUD + reload (code editor = plain `Textarea` mono; CodeMirror deferred),
-  with the existing security warning surfaced prominently. **Data**: `GET /api/data/:store`
+  owner-only hot-reloadable JS command modules (`modules/` directory). Dashboard
+  lists modules, shows source code, reloads, deletes, and creates new modules via
+  `GET/POST/DELETE /api/modules`. See `MODULES.md` for the full module contract,
+  security rules, and examples. **Data**: `GET /api/data/:store`
   — store picker + tree/JSON view. **Experiments**: alpha codes/telemetry endpoints.
 
 ### 5.7 Public pages

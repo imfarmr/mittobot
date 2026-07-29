@@ -3069,7 +3069,7 @@ function startApi(ctx) {
   });
 
   // ─── Serve built dashboard (SPA) ──────────────────────────────────────
-  // The Vite build output sits at dashboard/dist/. The Express server serves
+  // The Vite build output sits at dashboard-v2/dist/. The Express server serves
   // the static files AND handles SPA fallback so the entire application
   // (bot API + dashboard UI) runs on a single port.
   // Note: dashboardPath & servingDashboard are already resolved above.

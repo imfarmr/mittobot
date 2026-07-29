@@ -298,7 +298,7 @@ export default function ThemeView() {
                 className="mt-1 text-xs"
                 value={current.footer.text ?? ""}
                 onChange={e => setFooter({ text: e.target.value })}
-                placeholder="Powered by ggboi • {guild}"
+                placeholder="Powered by Mitto • {guild}"
                 disabled={!isOwner}
                 maxLength={2048}
               />

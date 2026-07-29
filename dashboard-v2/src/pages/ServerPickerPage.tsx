@@ -27,11 +27,11 @@ export default function ServerPickerPage() {
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
-              <Server className="size-5 text-primary" />
+              <span className="font-bold text-primary">M</span>
             </div>
-            <span className="font-semibold text-lg tracking-tight">ggboi</span>
+            <span className="font-semibold text-lg tracking-tight">Mitto</span>
             <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded font-mono">
-              Control Panel
+              Workspace
             </span>
           </div>
 
@@ -88,7 +88,7 @@ export default function ServerPickerPage() {
           <Card className="border-border/40 bg-card/40">
             <CardHeader className="p-4">
               <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Telemetry
+                Your account
               </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-4">
@@ -121,8 +121,8 @@ export default function ServerPickerPage() {
         <div className="lg:col-span-3 space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Select a Server</h2>
-              <p className="text-sm text-muted-foreground">Select a server to manage its configuration.</p>
+              <h2 className="text-xl font-bold tracking-tight">Choose a server</h2>
+              <p className="text-sm text-muted-foreground">Pick a server to open its workspace.</p>
             </div>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />

@@ -178,7 +178,7 @@ export default function DocsPage() {
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center space-y-4">
             <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            <span className="text-muted-foreground text-sm font-mono">Loading telemetry database...</span>
+            <span className="text-muted-foreground text-sm font-mono">Loading command library...</span>
           </div>
         ) : error ? (
           <Card className="border-destructive/20 bg-destructive/5">

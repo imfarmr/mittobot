@@ -215,7 +215,7 @@ export function CommandPalette() {
           <div className="border-t border-border/30 px-3 py-2 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
             <span className="flex items-center gap-1.5">
               <Terminal className="size-3" />
-              ggboi command palette
+              Mitto command palette
             </span>
             <span>↑↓ navigate · ↵ select · esc close</span>
           </div>

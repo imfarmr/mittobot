@@ -32,12 +32,9 @@ DASHBOARD_SPEC §1).
 - `src/api/server.js` serves the dashboard build as static files on the same Express
   app as the API. Path resolution order:
   ```js
-  // Prefer the v2 build; fall back to legacy v1; warn if neither exists.
-  const candidates = [
-    path.resolve(__dirname, "../../dashboard-v2/dist"),   // ★ default
-    path.resolve(__dirname, "../../dashboard/dist"),      // legacy fallback
-  ];
-  const dashboardPath = candidates.find(p => fs.existsSync(p));
+  // Serve the v2 dashboard build. If it is missing, the dashboard simply
+  // won't be served locally and you can still run an external dashboard.
+  const dashboardPath = path.resolve(__dirname, "../../dashboard-v2/dist");
   ```
 - SPA fallback stays as-is: `GET *` → `index.html` (excluding `/api/*` and `/login`).
 - Build step: `npm run build` at repo root builds `dashboard-v2` (update the root
@@ -385,7 +382,17 @@ Lightweight sibling of dynamic modules — **no JS execution**, safe for mods:
 - Content supports the placeholder system (§9) + embed JSON (`{embed:{...}}`).
 - Table `tags (guild_id, name, content, author_id, uses, created_at, PRIMARY KEY (guild_id, name))`.
 
-### 5.9 Social notifications (`src/social.js`)
+### 5.9 Custom Modules (dynamic modules)
+
+Owner-only, hot-reloadable JavaScript command modules stored in the `modules/`
+directory. Each module exports a command definition object with `name`,
+`description`, and either/both a `prefix` handler and a `slash` + `execute`
+handler. Modules are loaded at startup, can be created/reloaded/deleted via the
+`$modules` command or the dashboard (`/api/modules`), and run with the same
+shared `ctx` as built-in commands. Full contract, naming rules, security
+warnings, and examples are documented in `MODULES.md`.
+
+### 5.10 Social notifications (`src/social.js`)
 
 Poll-based announcers (no OAuth needed):
 - **YouTube**: channel RSS (`https://www.youtube.com/feeds/videos.xml?channel_id=`) every 5 min.

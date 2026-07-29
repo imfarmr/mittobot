@@ -1,7 +1,7 @@
 import { useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
-  Menu, Terminal, LogOut, ChevronDown, ChevronRight,
+  Menu, LogOut, ChevronDown, ChevronRight,
   Home, Activity, Settings, Blocks, Database, FlaskConical, LayoutDashboard, Cpu,
   // Moderation icons
   ShieldAlert, ShieldBan, Flame, FolderOpen, ScrollText, StickyNote, Zap, FileText,
@@ -130,8 +130,8 @@ export default function AppShell() {
     <div className="flex flex-col h-full bg-sidebar">
       {/* Brand — no ping */}
       <div className="h-14 border-b border-sidebar-border px-5 flex items-center gap-2.5 shrink-0">
-        <Terminal className="size-5 text-primary" />
-        <span className="font-semibold text-foreground tracking-tight text-base">ggboi</span>
+        <div className="size-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">M</div>
+        <span className="font-semibold text-foreground tracking-tight text-base">Mitto</span>
         <span className="status-dot ml-auto" />
       </div>
 
@@ -339,7 +339,7 @@ export default function AppShell() {
               {renderSidebarContent()}
             </SheetContent>
           </Sheet>
-          <span className="font-semibold text-foreground tracking-tight text-sm">ggboi</span>
+          <span className="font-semibold text-foreground tracking-tight text-sm">Mitto</span>
           <span className="text-xs text-muted-foreground font-mono truncate max-w-28">
             {isSystemRoute ? "System" : (guild?.name || "")}
           </span>

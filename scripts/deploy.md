@@ -1,56 +1,48 @@
 # ggboi Deployment Guide
 
-**Architecture:** Dashboard on Vercel, bot on your VPS.
+**Architecture:** The bot and its dashboard run as a single Node.js process on one port (`3432` by default). The Express API in `src/api/server.js` serves the built `dashboard-v2` SPA from `dashboard-v2/dist/` as static files, so there is no separate dashboard server to deploy unless you want to split them later (e.g. Vercel).
 
 ```
-┌─────────────────┐     HTTPS / JWT      ┌──────────────────────┐
-│  Vercel (SPA)   │ ◄──────────────────► │  Your VPS (Bot API)  │
-│  ggboi-dash.vercel.app │               │  bot.yourdomain.com  │
-│  Static React   │     CORS-locked      │  Express on :3432    │
-│  No database    │     Bearer token     │  SQLite/Discord API  │
-└─────────────────┘                      └──────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Single Node.js process (index.js)          │
+│  ┌───────────────┐  ┌──────────────────┐   │
+│  │  Express API  │  │ dashboard-v2 SPA │   │
+│  │  /api/*       │  │  /* (fallback)   │   │
+│  └───────────────  └──────────────────┘   │
+│              listens on :3432               │
+└─────────────────────────────────────────────┘
+                     │
+              reverse proxy (HTTPS)
+                     │
+                internet
 ```
 
-## 1. Deploy the Dashboard to Vercel
+## 1. Build the Dashboard
 
-### Steps
+The dashboard lives in `dashboard-v2/` and is built into `dashboard-v2/dist/`. The bot serves that folder automatically.
 
 ```bash
-# 1. Navigate to the dashboard directory
-cd dashboard
-
-# 2. Install dependencies
-npm install
-
-# 3. Build locally to verify
+# From the repo root
 npm run build
 
-# 4. Deploy to Vercel
-npx vercel --prod
+# Or manually:
+cd dashboard-v2
+npm install
+npm run build
 ```
 
-### Vercel Environment Variables
+The root `package.json` script does exactly this:
 
-Set these in the Vercel dashboard (Project > Settings > Environment Variables):
-
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `VITE_BOT_API_URL` | `https://bot.yourdomain.com` | Your VPS bot API URL (no trailing slash) |
-
-**Important:** `VITE_BOT_API_URL` is embedded at **build time**, not runtime. After changing it, redeploy.
-
-### Vercel Configuration
-
-`dashboard/vercel.json` is already set up with SPA rewrites:
 ```json
-{
-  "rewrites": [{ "source": "/(.*)", "destination": "/" }]
-}
+"build": "npm run build:dashboard"
+"build:dashboard": "cd dashboard-v2 && npm ci && npm run build"
 ```
+
+> **Note for older checkouts:** There used to be a `dashboard/` directory (v1). It has been replaced by `dashboard-v2/`. Make sure any scripts or CI/CD you have now point to `dashboard-v2`.
 
 ---
 
-## 2. Deploy the Bot to Your VPS
+## 2. Deploy the Bot
 
 ### Option A: Docker (Recommended)
 
@@ -59,9 +51,9 @@ Set these in the Vercel dashboard (Project > Settings > Environment Variables):
 git clone <your-repo> /opt/ggboi
 cd /opt/ggboi
 
-# 2. Create .env from example (edit on the HOST, not inside the container)
+# 2. Create .env from example and fill in your secrets
 cp .env.example .env
-nano .env   # fill in your secrets (see .env.example for all fields)
+nano .env
 
 # 3. Build and start with docker compose
 docker compose -f docker-compose.prod.yml build bot
@@ -71,11 +63,12 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml logs -f bot
 ```
 
-The bot API listens on `0.0.0.0:3432` (all interfaces). You need a **reverse proxy** to serve it publicly with HTTPS.
+The bot API + dashboard UI both listen on the single port you set in `.env` (default `3432`). You need a reverse proxy (Caddy or nginx) to expose it publicly with HTTPS.
 
 ### Discord Intents
 
 Before the bot can function, enable these Gateway Intents in the [Discord Developer Portal](https://discord.com/developers/applications) under **Bot > Privileged Gateway Intents**:
+
 - **Server Members Intent** — for autoroles, welcome/leave messages, role tracking
 - **Message Content Intent** — for reading message content (commands, automod, AI)
 - **Presence Intent** — for presence data in userinfo commands
@@ -99,8 +92,11 @@ npm install --production
 cp .env.example .env
 nano .env
 
-# 5. Create logs directory
-mkdir -p logs
+# 5. Build the dashboard
+cd dashboard-v2
+npm install
+npm run build
+cd ..
 
 # 6. Start with PM2
 pm2 start ecosystem.config.cjs
@@ -120,22 +116,28 @@ sudo git clone <your-repo> /opt/ggboi
 cd /opt/ggboi
 sudo npm install --production
 
-# 2. Create a non-root user
+# 2. Build the dashboard
+cd dashboard-v2
+npm install
+npm run build
+cd ..
+
+# 3. Create a non-root user
 sudo useradd -r -s /bin/false ggboi-bot
 sudo mkdir -p logs
 sudo chown -R ggboi-bot:ggboi-bot /opt/ggboi
 
-# 3. Create .env
+# 4. Create .env
 sudo -u ggboi-bot cp .env.example .env
 sudo -u ggboi-bot nano .env
 
-# 4. Install the systemd service
+# 5. Install the systemd service
 sudo cp scripts/ggboi-bot.service /etc/systemd/system/ggboi-bot.service
 sudo systemctl daemon-reload
 sudo systemctl enable ggboi-bot
 sudo systemctl start ggboi-bot
 
-# 5. Check status
+# 6. Check status
 sudo systemctl status ggboi-bot
 sudo journalctl -u ggboi-bot -f
 ```
@@ -144,7 +146,7 @@ sudo journalctl -u ggboi-bot -f
 
 ## 3. Set Up HTTPS (Reverse Proxy)
 
-The bot API listens on `0.0.0.0:3432`. You must put it behind a reverse proxy for HTTPS.
+The bot listens on `0.0.0.0:3432` (or whatever you set for `PORT`). You must put it behind a reverse proxy for HTTPS.
 
 ### Option A: Caddy (Simplest — auto HTTPS)
 
@@ -205,58 +207,90 @@ sudo certbot --nginx -d bot.yourdomain.com
 
 ---
 
-## 4. Security Checklist
+## 4. Environment Variables
 
-- [ ] **HTTPS** — The bot API MUST be served over HTTPS in production
-- [ ] **`DASHBOARD_JWT_SECRET`** — Set a long (~64 char), random, stable secret
-- [ ] **`DASHBOARD_ORIGIN`** — Set to your exact Vercel URL (e.g., `https://ggboi-dash.vercel.app`)
-- [ ] **`DASHBOARD_PASSWORD`** — Use a strong password (or set up Discord OAuth instead)
-- [ ] **Firewall** — Only ports 80/443 open to the internet; port 3432 on private network
-- [ ] **API rate limit** — 300 requests/minute per IP on all `/api/*` endpoints (built-in)
-- [ ] **Login rate limit** — 10 attempts/minute per IP on `/login` (built-in)
-- [ ] **Regular updates** — Run `npm audit` and update dependencies periodically
-- [ ] **SQLite backup** — Back up the `ggboi.sqlite` file regularly
-- [ ] **Discord OAuth** (optional) — More secure than a shared password for multi-admin setups
-
----
-
-## 5. Environment Variables (Production)
-
-See `.env.example` for the full list. Here are the production-critical ones:
+See `.env.example` for the full list. Critical values for production:
 
 ```bash
 # Required
 BOT_TOKEN=your_discord_bot_token
 
-# Auth — pick one:
+# Auth — pick one or both:
 DASHBOARD_PASSWORD=a_very_strong_password_here
-
-# OR (more secure for multi-user):
+# OR
 DISCORD_CLIENT_ID=your_discord_app_id
 DISCORD_CLIENT_SECRET=your_discord_app_secret
 DISCORD_REDIRECT_URI=https://bot.yourdomain.com/api/auth/discord/callback
 
-# Required for production
+# Required in production
 DASHBOARD_JWT_SECRET=random_64_char_hex_secret
-DASHBOARD_ORIGIN=https://ggboi-dash.vercel.app
 
-# Optional
-API_PORT=3432
-DASHBOARD_TOKEN_TTL=7d
+# Port — single port for both API and UI
+PORT=3432
+
+# Optional: only needed if you split the dashboard out to Vercel
+# DASHBOARD_ORIGIN=https://ggboi-dash.vercel.app
 ```
 
 ---
 
-## 6. Updating
+## 5. Optional: Vercel Split Deploy
 
-### Dashboard (Vercel)
-```bash
-cd dashboard
-npm run build
-npx vercel --prod
+If you want to host the dashboard separately on Vercel, you can, but the **default and recommended path is single-port serving**.
+
+If you do split them:
+
+1. Set `VITE_BOT_API_URL=https://bot.yourdomain.com` in the Vercel build environment.
+2. Set `DASHBOARD_ORIGIN=https://your-vercel-app.vercel.app` in the bot's `.env` so CORS is locked down.
+3. Keep `DISCORD_REDIRECT_URI` pointed at the bot's callback URL.
+4. Make sure `dashboard-v2/vercel.json` has the SPA rewrite.
+
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
 ```
 
-### Bot (Docker)
+---
+
+## 6. Security Checklist
+
+- [ ] **HTTPS** — The bot API MUST be served over HTTPS in production
+- [ ] **`DASHBOARD_JWT_SECRET`** — Set a long (~64 char), random, stable secret
+- [ ] **`DASHBOARD_PASSWORD`** — Use a strong password (or use Discord OAuth)
+- [ ] **Firewall** — Only ports 80/443 open to the internet; port 3432 should be private/local
+- [ ] **API rate limit** — 300 requests/minute per IP on all `/api/*` endpoints (built-in)
+- [ ] **Login rate limit** — 10 attempts/minute per IP on `/login` (built-in)
+- [ ] **Regular updates** — Run `npm audit` and update dependencies periodically
+- [ ] **SQLite backup** — Back up the `ggboi.sqlite` file regularly
+- [ ] **Custom modules** — Only bot owners can write JS modules; keep credentials safe
+
+---
+
+## 7. Local Development
+
+```bash
+# Run bot + dashboard dev server together
+npm run dev
+
+# Bot only
+node scripts/dev.js --no-dashboard
+```
+
+The dashboard dev server runs on `http://localhost:5174` and proxies `/api` and `/login` to the bot on `:3432`.
+
+---
+
+## 8. Updating
+
+### Dashboard only
+```bash
+cd /opt/ggboi
+npm run build
+pm2 restart ggboi-bot   # or docker compose restart
+```
+
+### Bot + dashboard (Docker)
 ```bash
 cd /opt/ggboi
 git pull
@@ -264,10 +298,11 @@ docker compose -f docker-compose.prod.yml build bot
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-### Bot (PM2)
+### Bot + dashboard (PM2)
 ```bash
 cd /opt/ggboi
 git pull
 npm install --production
+cd dashboard-v2 && npm install && npm run build && cd ..
 pm2 restart ggboi-bot
 ```

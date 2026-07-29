@@ -118,8 +118,8 @@ export default function Overview() {
       <FadeIn delay={0} y={8}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Mission Control</h1>
-            <p className="text-sm text-muted-foreground">Guild Overview for {guild?.name || "Server"}</p>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Overview</h1>
+            <p className="text-sm text-muted-foreground">A quick look at {guild?.name || "your server"}</p>
           </div>
           {status?.tag && (
             <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
@@ -192,9 +192,9 @@ export default function Overview() {
             <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/20">
               <div className="space-y-0.5">
                 <CardTitle className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">
-                  System Telemetry
+                  Server health
                 </CardTitle>
-                <CardDescription className="text-xs">Live metrics from the bot process</CardDescription>
+                  <CardDescription className="text-xs">Live metrics from Mitto</CardDescription>
               </div>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-success/10 text-success border border-success/20">
                 <span className="size-1.5 rounded-full bg-success animate-pulse" />
