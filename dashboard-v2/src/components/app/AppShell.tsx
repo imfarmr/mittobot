@@ -4,10 +4,10 @@ import {
   Menu, Terminal, LogOut, ChevronDown, ChevronRight,
   Home, Activity, Settings, Blocks, Database, FlaskConical, LayoutDashboard, Cpu,
   // Moderation icons
-  ShieldAlert, ShieldBan, Flame, FolderOpen, ScrollText, StickyNote, Zap,
+  ShieldAlert, ShieldBan, Flame, FolderOpen, ScrollText, StickyNote, Zap, FileText,
   // Community icons
   MessageSquareText, UserCheck, Users, FolderSync, BarChart3, Ticket, Gift,
-  Star, MessageCircle, Cake, Link2, Share2, Clock, HardDrive,
+  Star, MessageCircle, Cake, Link2, Share2, Clock, HardDrive, Palette,
   // Engagement icons
   Coins, Bookmark, Music,
   // AI icons
@@ -21,6 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useAuth } from "@/hooks/useAuth";
 import { useGuild } from "@/hooks/useGuild";
 import { avatarUrl, guildIconUrl, guildAcronym } from "@/lib/utils";
+import { CommandPalette } from "@/components/app/CommandPalette";
+import { ThemeToggle } from "@/components/app/ThemeToggle";
 
 interface NavItem {
   label: string;
@@ -63,6 +65,7 @@ export default function AppShell() {
         { label: "Dangerzone", path: `/g/${guildId}/moderation/dangerzone`, icon: Flame },
         { label: "Cases", path: `/g/${guildId}/moderation/cases`, icon: FolderOpen },
         { label: "Mod Log", path: `/g/${guildId}/moderation/modlog`, icon: ScrollText },
+        { label: "Server Logging", path: `/g/${guildId}/moderation/logging`, icon: FileText },
         { label: "User Notes", path: `/g/${guildId}/moderation/notes`, icon: StickyNote },
         { label: "Auto Rules", path: `/g/${guildId}/moderation/rules`, icon: Zap },
       ],
@@ -85,6 +88,7 @@ export default function AppShell() {
         { label: "Social", path: `/g/${guildId}/community/social`, icon: Share2 },
         { label: "Schedule", path: `/g/${guildId}/community/schedule`, icon: Clock },
         { label: "Backups", path: `/g/${guildId}/community/backups`, icon: HardDrive },
+        { label: "Embed Builder", path: `/g/${guildId}/community/embeds`, icon: Palette },
       ],
     },
     {
@@ -118,6 +122,7 @@ export default function AppShell() {
       { label: "Custom Modules", path: "/system/modules", icon: Blocks },
       { label: "Data Stores", path: "/system/data", icon: Database },
       { label: "Alpha Experiments", path: "/system/experiments", icon: FlaskConical },
+      { label: "Theme Editor", path: "/system/theme", icon: Palette },
     ],
   };
 
@@ -143,7 +148,7 @@ export default function AppShell() {
                       {guild?.icon ? (
                         <img src={guildIconUrl(guild)!} className="size-full object-cover" alt="" />
                       ) : (
-                        <span className="font-mono text-[10px] font-bold text-muted-foreground">
+                        <span className="font-mono text-xs font-bold text-muted-foreground">
                           {guild ? guildAcronym(guild.name) : "?"}
                         </span>
                       )}
@@ -157,12 +162,12 @@ export default function AppShell() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-[200px] border-sidebar-border bg-card">
                 {guilds.map((g) => (
-                  <DropdownMenuItem key={g.id} onClick={() => navigate(`/g/${g.id}`)} className="gap-2 cursor-pointer text-xs">
+                  <DropdownMenuItem key={g.id} onClick={() => navigate(`/g/${g.id}`)} className="gap-2 cursor-pointer text-sm">
                     <div className="size-5 rounded bg-secondary flex items-center justify-center overflow-hidden shrink-0">
                       {g.icon ? (
                         <img src={guildIconUrl(g)!} className="size-full object-cover" alt="" />
                       ) : (
-                        <span className="font-mono text-[9px] font-bold text-muted-foreground">{guildAcronym(g.name)}</span>
+                        <span className="font-mono text-xs font-bold text-muted-foreground">{guildAcronym(g.name)}</span>
                       )}
                     </div>
                     <span className="truncate">{g.name}</span>
@@ -179,7 +184,7 @@ export default function AppShell() {
                 <NavLink
                   to={`/g/${guildId}/overview`}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       isActive ? "bg-primary/10 text-primary" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
@@ -190,7 +195,7 @@ export default function AppShell() {
                 <NavLink
                   to={`/g/${guildId}/commands`}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                       isActive ? "bg-primary/10 text-primary" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
@@ -213,41 +218,51 @@ export default function AppShell() {
           {/* Collapsible Sections */}
           {!isSystemRoute ? (
             <div className="space-y-3">
-              {sections.map((sec) => (
-                <div key={sec.id}>
-                  <button
-                    onClick={() => toggleSection(sec.id)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {sec.label}
-                    {openSections[sec.id] ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                  </button>
-                  {openSections[sec.id] && (
-                    <div className="space-y-0.5 mt-1">
-                      {sec.items.map((item) => (
-                        <NavLink
-                          key={item.path}
-                          to={item.path}
-                          className={({ isActive }) =>
-                            `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                              isActive
-                                ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
-                                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                            }`
-                          }
-                        >
-                          <item.icon className="size-3.5 shrink-0" />
-                          {item.label}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {sections.map((sec) => {
+                const hasActiveChild = sec.items.some(item => location.pathname.startsWith(item.path));
+                return (
+                  <div key={sec.id}>
+                    <button
+                      onClick={() => toggleSection(sec.id)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        {sec.label}
+                        {hasActiveChild && !openSections[sec.id] && (
+                          <span className="size-1.5 rounded-full bg-primary animate-pulse" aria-hidden="true" />
+                        )}
+                      </span>
+                      <ChevronRight
+                        className={`size-3.5 transition-transform duration-200 ${openSections[sec.id] ? "rotate-90" : ""}`}
+                      />
+                    </button>
+                    {openSections[sec.id] && (
+                      <div className="space-y-0.5 mt-1 animate-expand-section origin-top">
+                        {sec.items.map((item) => (
+                          <NavLink
+                            key={item.path}
+                            to={item.path}
+                            className={({ isActive }) =>
+                              `group flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${
+                                isActive
+                                  ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
+                                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                              }`
+                            }
+                          >
+                            <item.icon className="size-4 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                            {item.label}
+                          </NavLink>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="space-y-0.5">
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-muted-foreground">
                 {systemSection.label}
               </div>
               {systemSection.items.map((item) => (
@@ -255,14 +270,14 @@ export default function AppShell() {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                       isActive
                         ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
                         : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
                 >
-                  <item.icon className="size-3.5 shrink-0" />
+                  <item.icon className="size-4 shrink-0" />
                   {item.label}
                 </NavLink>
               ))}
@@ -278,12 +293,13 @@ export default function AppShell() {
             <img src={avatarUrl(user)} alt="" className="size-7 rounded-full border border-sidebar-border bg-background shrink-0" referrerPolicy="no-referrer" />
             <div className="truncate min-w-0">
               <div className="text-xs font-semibold text-foreground truncate">{user.tag}</div>
-              <div className={`text-[9px] uppercase font-bold tracking-wider ${user.isOwner ? "text-primary" : "text-muted-foreground"}`}>
+              <div className={`text-xs uppercase font-bold tracking-wider ${user.isOwner ? "text-primary" : "text-muted-foreground"}`}>
                 {user.isOwner ? "Owner" : "Admin"}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
+            <ThemeToggle />
             {user.isOwner && (
               <NavLink to="/system/status">
                 <Button variant="ghost" size="icon" className={`size-7 text-muted-foreground hover:text-foreground ${isSystemRoute ? "text-primary" : ""}`} title="System">
@@ -302,6 +318,9 @@ export default function AppShell() {
 
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
+      {/* Command Palette (⌘K / Ctrl+K) */}
+      <CommandPalette />
+
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 h-full border-r border-sidebar-border bg-sidebar">
         {renderSidebarContent()}
@@ -321,7 +340,7 @@ export default function AppShell() {
             </SheetContent>
           </Sheet>
           <span className="font-semibold text-foreground tracking-tight text-sm">ggboi</span>
-          <span className="text-[10px] text-muted-foreground font-mono truncate max-w-28">
+          <span className="text-xs text-muted-foreground font-mono truncate max-w-28">
             {isSystemRoute ? "System" : (guild?.name || "")}
           </span>
         </div>

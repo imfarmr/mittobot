@@ -6,7 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { ErrorRetry } from "@/components/app/ErrorRetry";
 import { Users } from "lucide-react";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 interface RolesMeta {
   hasGuild: boolean;
@@ -42,7 +45,9 @@ export default function MembersView() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (meta.isLoading || !meta.data) return <div className="p-6 text-sm text-muted-foreground">Loading roles...</div>;
+  if (meta.error) return <ErrorRetry message="Failed to load guild metadata" onRetry={() => meta.refetch()} />;
+  if (members.error) return <ErrorRetry message="Failed to load role members" onRetry={() => members.refetch()} />;
+  if (meta.isLoading || !meta.data) return <LoadingFallback text="Loading roles..." />;
 
   const allMembers = new Map<string, { id: string; username: string; displayName: string; isBot: boolean; roles: string[] }>();
   let totalMemberCount = 0;
@@ -68,60 +73,69 @@ export default function MembersView() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Users className="size-5 text-primary" />
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Role Members</h1>
-          <p className="text-xs text-muted-foreground">{memberList.length} members across all roles</p>
+    <FadeIn>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Users className="size-5 text-primary" />
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Role Members</h1>
+            <p className="text-xs text-muted-foreground">{memberList.length} members across all roles</p>
+          </div>
         </div>
-      </div>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold">Filter</CardTitle>
-          <CardDescription className="text-xs">Search by name, ID, or role</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} className="text-xs font-mono" />
-        </CardContent>
-      </Card>
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Filter</CardTitle>
+            <CardDescription className="text-xs">Search by name, ID, or role</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Input placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} className="text-xs font-mono" />
+          </CardContent>
+        </Card>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardContent className="p-0">
-          {members.isLoading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Loading members…</div>
-          ) : memberList.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">No members found.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border/30">
-                  <TableHead className="text-xs">Member</TableHead>
-                  <TableHead className="text-xs">ID</TableHead>
-                  <TableHead className="text-xs">Roles</TableHead>
-                  <TableHead className="text-xs">Type</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {memberList.slice(0, 200).map(m => (
-                  <TableRow key={m.id} className="border-b border-border/20">
-                    <TableCell className="text-xs">{m.displayName}</TableCell>
-                    <TableCell className="text-xs font-mono text-muted-foreground">{m.id}</TableCell>
-                    <TableCell className="text-xs">
-                      <div className="flex flex-wrap gap-1">
-                        {m.roles.slice(0, 4).map(r => <Badge key={r} variant="outline" className="text-[10px]">{r}</Badge>)}
-                        {m.roles.length > 4 && <span className="text-[10px] text-muted-foreground">+{m.roles.length - 4}</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs">{m.isBot ? <Badge variant="outline" className="text-[10px]">Bot</Badge> : <span className="text-muted-foreground">User</span>}</TableCell>
+        <Card className="border-border/40 bg-card/40">
+          <CardContent className="p-0">
+            {members.isLoading ? (
+              <LoadingFallback text="Loading members…" variant="inline" />
+            ) : memberList.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">No members found.</div>
+            ) : (
+              <>
+                {memberList.length > 200 && (
+                  <div className="px-4 py-2 text-xs text-muted-foreground bg-background-alt/30 border-b border-border/20">
+                    Showing first 200 members ({memberList.length.toLocaleString()} total)
+                  </div>
+                )}
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/30">
+                    <TableHead className="text-xs">Member</TableHead>
+                    <TableHead className="text-xs">ID</TableHead>
+                    <TableHead className="text-xs">Roles</TableHead>
+                    <TableHead className="text-xs">Type</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                </TableHeader>
+                <TableBody>
+                  {memberList.slice(0, 200).map(m => (
+                    <TableRow key={m.id} className="border-b border-border/20">
+                      <TableCell className="text-xs">{m.displayName}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">{m.id}</TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex flex-wrap gap-1">
+                          {m.roles.slice(0, 4).map(r => <Badge key={r} variant="outline" className="text-[10px]">{r}</Badge>)}
+                          {m.roles.length > 4 && <span className="text-[10px] text-muted-foreground">+{m.roles.length - 4}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs">{m.isBot ? <Badge variant="outline" className="text-[10px]">Bot</Badge> : <span className="text-muted-foreground">User</span>}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </FadeIn>
   );
 }

@@ -2,7 +2,7 @@ const { PermissionFlagsBits } = require("discord.js");
 const safe = require("../safe");
 const aiMemory = require("./memory");
 const settings = require("../settings");
-const { OWNER_IDS, validation } = require("../utils");
+const { OWNER_IDS, validation, sanitizeMentions } = require("../utils");
 
 // Resolve tool permissions from settings. Returns "all" | "mod" | "admin" | "owner".
 function getToolPermission(toolName) {
@@ -693,12 +693,12 @@ async function executeTool(name, args, ctx, message) {
         if (!await checkToolAccess("send_message", message.member)) return "Permission denied: You need moderator permissions to send messages via AI.";
         if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
         if (!args.content || typeof args.content !== "string") return `Error: Message content is required and must be a string.`;
-        const sanitizedContent = validation.sanitizeString(args.content, 2000);
+        const sanitizedContent = sanitizeMentions(validation.sanitizeString(args.content, 2000));
         const channel = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch channel for send");
         if (!channel || channel.type !== 0) return `Error: channel ${args.channelId} is not a valid text channel.`;
         const perms = channel.permissionsFor(guild.members.me);
         if (!perms?.has(PermissionFlagsBits.SendMessages)) return `Error: bot lacks permission to send messages in channel ${args.channelId}.`;
-        await channel.send(sanitizedContent);
+        await channel.send({ content: sanitizedContent, allowedMentions: { parse: [] } });
         return `Successfully sent message to #${channel.name}.`;
       }
 
@@ -1137,14 +1137,14 @@ async function executeTool(name, args, ctx, message) {
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!validation.isValidMessageId(args.messageId)) return `Error: Invalid message ID format.`;
       if (!args.content || typeof args.content !== "string") return `Error: Message content is required and must be a string.`;
-      const sanitizedContent = validation.sanitizeString(args.content, 2000);
+      const sanitizedContent = sanitizeMentions(validation.sanitizeString(args.content, 2000));
       const editCh = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch edit channel");
       if (!editCh) return "Error: channel not found.";
       const editMsg = await safe.orNull(editCh.messages.fetch(args.messageId), "tool: fetch edit message");
       if (!editMsg) return "Error: message not found.";
       if (editMsg.author.id !== client.user.id) return "Error: can only edit messages sent by the bot.";
       try {
-        await editMsg.edit({ content: sanitizedContent });
+        await editMsg.edit({ content: sanitizedContent, allowedMentions: { parse: [] } });
         return `Edited message ${args.messageId} in #${editCh.name}.`;
       } catch (err) {
         return `Error: failed to edit message — ${err.message}`;

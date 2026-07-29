@@ -10,8 +10,9 @@ const GREET_FILE = path.join(__dirname, "..", "greet.json");
 // { [guildId]: {
 //     welcome: { enabled, channelId, message },
 //     leave:   { enabled, channelId, message },
-//     logs:    { enabled, channelId, memberEvents, messageEvents },
 //   } }
+// (Logging was moved to src/logging.js — the logs section here is retained
+// for backward-compatible DB reads but is no longer actively used.)
 let store = {};
 
 function guildDefaults() {
@@ -106,6 +107,8 @@ function sendTo(guild, channelId, embed) {
 }
 
 // ─── Event handlers ───
+// Logging (join/leave/message events) has been moved to src/logging.js.
+// greet.js now only handles welcome + leave messages.
 async function onMemberAdd(member) {
   const cfg = getConfig(member.guild.id);
   if (cfg.welcome.enabled && cfg.welcome.channelId) {
@@ -117,11 +120,6 @@ async function onMemberAdd(member) {
     if (cfg.welcome.authorName) embed.setAuthor({ name: format(cfg.welcome.authorName, member, member.guild), iconURL: member.user.displayAvatarURL() });
     sendTo(member.guild, cfg.welcome.channelId, embed);
   }
-  if (cfg.logs.enabled && cfg.logs.memberEvents && cfg.logs.channelId) {
-    const embed = new EmbedBuilder().setColor(0x57f287).setAuthor({ name: `${member.user.tag} joined`, iconURL: member.user.displayAvatarURL() })
-      .setDescription(`<@${member.id}> • account created <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`).setTimestamp();
-    sendTo(member.guild, cfg.logs.channelId, embed);
-  }
 }
 
 async function onMemberRemove(member) {
@@ -130,40 +128,10 @@ async function onMemberRemove(member) {
     const embed = new EmbedBuilder().setColor(0xed4245).setDescription(format(cfg.leave.message, member, member.guild));
     sendTo(member.guild, cfg.leave.channelId, embed);
   }
-  if (cfg.logs.enabled && cfg.logs.memberEvents && cfg.logs.channelId) {
-    const embed = new EmbedBuilder().setColor(0xed4245).setAuthor({ name: `${member.user.tag} left`, iconURL: member.user.displayAvatarURL() })
-      .setDescription(`<@${member.id}>`).setTimestamp();
-    sendTo(member.guild, cfg.logs.channelId, embed);
-  }
-}
-
-async function onMessageDelete(message) {
-  if (!message.guild || message.author?.bot) return;
-  const cfg = getConfig(message.guild.id);
-  if (!cfg.logs.enabled || !cfg.logs.messageEvents || !cfg.logs.channelId) return;
-  const embed = new EmbedBuilder().setColor(0xed4245)
-    .setAuthor({ name: `${message.author?.tag ?? "Unknown"} • message deleted`, iconURL: message.author?.displayAvatarURL?.() })
-    .setDescription(`In <#${message.channel.id}>:\n${(message.content || "*[no text / embed]*").slice(0, 1500)}`).setTimestamp();
-  sendTo(message.guild, cfg.logs.channelId, embed);
-}
-
-async function onMessageUpdate(oldMsg, newMsg) {
-  if (!newMsg.guild || newMsg.author?.bot) return;
-  if (oldMsg.content === newMsg.content) return;
-  const cfg = getConfig(newMsg.guild.id);
-  if (!cfg.logs.enabled || !cfg.logs.messageEvents || !cfg.logs.channelId) return;
-  const embed = new EmbedBuilder().setColor(0xfee75c)
-    .setAuthor({ name: `${newMsg.author?.tag ?? "Unknown"} • message edited`, iconURL: newMsg.author?.displayAvatarURL?.() })
-    .setDescription(`In <#${newMsg.channel.id}> ([jump](${newMsg.url}))`)
-    .addFields(
-      { name: "Before", value: (oldMsg.content || "*[unknown]*").slice(0, 1000) },
-      { name: "After",  value: (newMsg.content || "*[unknown]*").slice(0, 1000) },
-    ).setTimestamp();
-  sendTo(newMsg.guild, cfg.logs.channelId, embed);
 }
 
 module.exports = {
   load, save, getConfig, setConfig,
-  onMemberAdd, onMemberRemove, onMessageDelete, onMessageUpdate,
+  onMemberAdd, onMemberRemove,
   GREET_FILE,
 };

@@ -35,6 +35,32 @@
   --warning: #f59e0b;
   --info: #3b82f6;
 
+  /* ── Discord brand (login button) ── */
+  --discord: #5865f2;
+  --discord-hover: #4752c4;
+
+  /* ── Status / moderation action badge colors ──
+     These are intentionally darker/brighter variants so badges remain
+     legible on the dark surfaces and can be overridden by a theme. */
+  --status-warn: #f59e0b;
+  --status-mute: #f97316;
+  --status-kick: #ef4444;
+  --status-ban: #dc2626;
+  --status-undo: #22c55e;
+
+  /* ── Owner / premium badge (Server Picker owner chip) ── */
+  --status-owner: #fbbf24;
+
+  /* ── Command category accent colors (DocsPage badges) ── */
+  --category-utility: #818cf8;
+  --category-info: #34d399;
+  --category-fun: #f472b6;
+  --category-fakemod: #facc15;
+  --category-realmod: #fb7185;
+  --category-admin: #c084fc;
+  --category-dynamic: #fbbf24;
+  --category-fallback: #a1a1aa;
+
   /* ── Lines & focus ── */
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.1);
@@ -78,6 +104,22 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-discord: var(--discord);
+  --color-discord-hover: var(--discord-hover);
+  --color-status-warn: var(--status-warn);
+  --color-status-mute: var(--status-mute);
+  --color-status-kick: var(--status-kick);
+  --color-status-ban: var(--status-ban);
+  --color-status-undo: var(--status-undo);
+  --color-status-owner: var(--status-owner);
+  --color-category-utility: var(--category-utility);
+  --color-category-info: var(--category-info);
+  --color-category-fun: var(--category-fun);
+  --color-category-fakemod: var(--category-fakemod);
+  --color-category-realmod: var(--category-realmod);
+  --color-category-admin: var(--category-admin);
+  --color-category-dynamic: var(--category-dynamic);
+  --color-category-fallback: var(--category-fallback);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -140,6 +182,15 @@
   background-size: 40px 40px;
 }
 
+/* Slow panning grid for hero/landing to give life without distraction */
+@keyframes hero-grid-pan {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 40px; }
+}
+.bg-hero-grid--pan {
+  animation: hero-grid-pan 60s linear infinite;
+}
+
 /* Pulsing status dot */
 @keyframes status-pulse {
   0%,
@@ -157,4 +208,121 @@
 .status-dot--offline {
   @apply bg-destructive;
   animation: none;
+}
+
+/* ── Animation utilities ─────────────────────────────────────────────────── */
+
+/* Shimmer sweep — used for loading states */
+@keyframes shimmer-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.animate-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+  animation: shimmer-sweep 1.8s ease-in-out infinite;
+}
+
+/* Smooth height for collapsible sidebar sections */
+@keyframes expand-section {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-expand-section {
+  animation: expand-section 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Subtle flash on live metric updates */
+@keyframes live-metric-flash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 30%, transparent); }
+  70% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.live-metric-flash {
+  animation: live-metric-flash 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Polished interactive utilities ───────────────────────────────────────── */
+
+/* Subtle lift on interactive rows */
+.interactive-row {
+  @apply transition-all duration-200 ease-out;
+}
+.interactive-row:hover {
+  @apply bg-white/[0.02] -translate-y-px;
+}
+
+/* Focus ring utility for custom interactive elements */
+.focus-ring {
+  @apply outline-none ring-0 transition-shadow duration-200;
+}
+.focus-ring:focus-visible {
+  @apply ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+}
+
+/* Glass card accent sheen */
+.card-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.06), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.card-sheen:hover::before {
+  opacity: 1;
+}
+
+/* Button loading spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin 1s linear infinite;
+}
+
+/* Page transitions */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.25s ease-out, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.page-transition-exit {
+  opacity: 1;
+}
+.page-transition-exit-active {
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+}
+
+/* Smooth table rows */
+.table-row-polished td {
+  @apply transition-colors duration-200;
 }

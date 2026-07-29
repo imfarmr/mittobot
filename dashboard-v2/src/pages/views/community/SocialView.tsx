@@ -10,6 +10,8 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Share2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 type Platform = "rss" | "youtube" | "twitch";
 
@@ -76,7 +78,7 @@ export default function SocialView() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading social connectors...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading social connectors..." />;
 
   const connectors = data.connectors || [];
   const canAdd = !!target.trim() && !!channelId;
@@ -87,106 +89,108 @@ export default function SocialView() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2.5">
-          <Share2 className="size-5 text-primary" /> Social Connectors
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Announce new RSS, YouTube, or Twitch posts to a channel. Polls every ~5 minutes.</p>
-      </div>
-
-      {!data.twitchReady && (
-        <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
-          Twitch connectors require <span className="font-mono">twitchClientId</span> / <span className="font-mono">twitchClientSecret</span> to be configured. RSS &amp; YouTube work without any keys.
+    <FadeIn>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2.5">
+            <Share2 className="size-5 text-primary" /> Social Connectors
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Announce new RSS, YouTube, or Twitch posts to a channel. Polls every ~5 minutes.</p>
         </div>
-      )}
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader>
-          <CardTitle className="text-sm font-semibold">Add Connector</CardTitle>
-          <CardDescription className="text-xs">Pick a platform, its target, and where to announce.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground">Platform</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs" value={platform} onChange={e => setPlatform(e.target.value as Platform)}>
-                <option value="rss">RSS Feed</option>
-                <option value="youtube">YouTube</option>
-                <option value="twitch">Twitch</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Target</label>
-              <Input className="mt-1 text-xs font-mono" value={target} onChange={e => setTarget(e.target.value)} placeholder={TARGET_HINT[platform]} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Announce Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— Select —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
-            </div>
+        {!data.twitchReady && (
+          <div className="text-xs text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+            Twitch connectors require <span className="font-mono">twitchClientId</span> / <span className="font-mono">twitchClientSecret</span> to be configured. RSS &amp; YouTube work without any keys.
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground">Message Template <span className="text-muted-foreground/60">(optional — {"{title}"}, {"{link}"}, {"{platform}"})</span></label>
-            <Input className="mt-1 text-xs" value={template} onChange={e => setTemplate(e.target.value)} placeholder="📢 New post: {title} — {link}" />
-          </div>
-          <div className="flex justify-end">
-            <Button size="sm" disabled={!canAdd || createMutation.isPending} onClick={handleAdd}>
-              <Plus className="size-3.5 mr-1" /> Add Connector
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        )}
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader><CardTitle className="text-sm font-semibold">Connectors ({connectors.length})</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          {connectors.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">No connectors yet.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border/30">
-                  <TableHead className="text-xs w-12">ID</TableHead>
-                  <TableHead className="text-xs">Platform</TableHead>
-                  <TableHead className="text-xs">Target</TableHead>
-                  <TableHead className="text-xs">Channel</TableHead>
-                  <TableHead className="text-xs w-16"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {connectors.map(c => {
-                  const channel = data.channels.find(ch => ch.id === c.announce_channel_id);
-                  return (
-                    <TableRow key={c.id} className="border-b border-border/20">
-                      <TableCell className="text-xs font-mono text-muted-foreground">#{c.id}</TableCell>
-                      <TableCell className="text-xs"><Badge variant="outline" className="text-[10px]">{PLATFORM_LABEL[c.platform] || c.platform}</Badge></TableCell>
-                      <TableCell className="text-xs font-mono max-w-xs truncate" title={c.target}>{c.target}</TableCell>
-                      <TableCell className="text-xs font-mono">#{channel?.name || c.announce_channel_id}</TableCell>
-                      <TableCell className="text-xs">
-                        <div className="flex justify-end">
-                          <Button size="sm" variant="ghost" className="text-destructive" disabled={deleteMutation.isPending} onClick={async () => {
-                            if (!await confirm({
-                              title: "Remove connector?",
-                              description: `Stop announcing ${PLATFORM_LABEL[c.platform] || c.platform} "${c.target}".`,
-                              confirmLabel: "Remove",
-                            })) return;
-                            deleteMutation.mutate(c.id);
-                          }}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Add Connector</CardTitle>
+            <CardDescription className="text-xs">Pick a platform, its target, and where to announce.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Platform</label>
+                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs" value={platform} onChange={e => setPlatform(e.target.value as Platform)}>
+                  <option value="rss">RSS Feed</option>
+                  <option value="youtube">YouTube</option>
+                  <option value="twitch">Twitch</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Target</label>
+                <Input className="mt-1 text-xs font-mono" value={target} onChange={e => setTarget(e.target.value)} placeholder={TARGET_HINT[platform]} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Announce Channel</label>
+                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
+                  <option value="">— Select —</option>
+                  {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Message Template <span className="text-muted-foreground/60">(optional — {"{title}"}, {"{link}"}, {"{platform}"})</span></label>
+              <Input className="mt-1 text-xs" value={template} onChange={e => setTemplate(e.target.value)} placeholder="📢 New post: {title} — {link}" />
+            </div>
+            <div className="flex justify-end">
+              <Button size="sm" disabled={!canAdd || createMutation.isPending} onClick={handleAdd}>
+                <Plus className="size-3.5 mr-1" /> Add Connector
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader><CardTitle className="text-sm font-semibold">Connectors ({connectors.length})</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            {connectors.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">No connectors yet.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/30">
+                    <TableHead className="text-xs w-12">ID</TableHead>
+                    <TableHead className="text-xs">Platform</TableHead>
+                    <TableHead className="text-xs">Target</TableHead>
+                    <TableHead className="text-xs">Channel</TableHead>
+                    <TableHead className="text-xs w-16"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {connectors.map(c => {
+                    const channel = data.channels.find(ch => ch.id === c.announce_channel_id);
+                    return (
+                      <TableRow key={c.id} className="border-b border-border/20">
+                        <TableCell className="text-xs font-mono text-muted-foreground">#{c.id}</TableCell>
+                        <TableCell className="text-xs"><Badge variant="outline" className="text-[10px]">{PLATFORM_LABEL[c.platform] || c.platform}</Badge></TableCell>
+                        <TableCell className="text-xs font-mono max-w-xs truncate" title={c.target}>{c.target}</TableCell>
+                        <TableCell className="text-xs font-mono">#{channel?.name || c.announce_channel_id}</TableCell>
+                        <TableCell className="text-xs">
+                          <div className="flex justify-end">
+                            <Button size="sm" variant="ghost" className="text-destructive" disabled={deleteMutation.isPending} onClick={async () => {
+                              if (!await confirm({
+                                title: "Remove connector?",
+                                description: `Stop announcing ${PLATFORM_LABEL[c.platform] || c.platform} "${c.target}".`,
+                                confirmLabel: "Remove",
+                              })) return;
+                              deleteMutation.mutate(c.id);
+                            }}>
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </FadeIn>
   );
 }

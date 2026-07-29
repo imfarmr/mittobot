@@ -13,6 +13,7 @@ import GiveawaysView from "@/pages/views/community/GiveawaysView";
 import SuggestionsView from "@/pages/views/community/SuggestionsView";
 import InvitesView from "@/pages/views/community/InvitesView";
 import SocialView from "@/pages/views/community/SocialView";
+import EmbedBuilderView from "@/pages/views/community/EmbedBuilderView";
 
 export default function CommunityHub() {
   return (
@@ -33,6 +34,7 @@ export default function CommunityHub() {
         <Route path="social" element={<SocialView />} />
         <Route path="schedule" element={<ScheduleView />} />
         <Route path="backups" element={<BackupsView />} />
+        <Route path="embeds" element={<EmbedBuilderView />} />
       </Routes>
     </div>
   );

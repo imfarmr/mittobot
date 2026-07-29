@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { BASE, api } from "@/lib/api";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 export default function LoginPage() {
   const { user, login, authError } = useAuth();
@@ -53,8 +54,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background bg-hero-grid flex items-center justify-center p-4">
-      <Card className="w-full max-w-md border-border/40 bg-card/90 backdrop-blur-md relative">
+    <div className="min-h-screen bg-background bg-hero-grid bg-hero-grid--pan flex items-center justify-center p-4">
+      <FadeIn y={16}>
+        <Card className="w-full max-w-md border-border/40 bg-card/90 backdrop-blur-md relative hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 transition-all duration-300">
         <Button
           variant="ghost"
           size="sm"
@@ -81,7 +83,7 @@ export default function LoginPage() {
           {hasDiscordOAuth && !pwMode ? (
             <div className="space-y-4">
               <a href={BASE + "/api/auth/discord"} className="w-full block">
-                <Button size="lg" className="w-full font-semibold gap-2.5 bg-[#5865F2] hover:bg-[#4752C4]">
+                <Button size="lg" className="w-full font-semibold gap-2.5 bg-discord hover:bg-discord-hover">
                   <Disc className="size-5" />
                   Login with Discord
                 </Button>
@@ -141,6 +143,7 @@ export default function LoginPage() {
           )}
         </CardContent>
       </Card>
+      </FadeIn>
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Zap, Plus, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 // Action types the backend's executeAction (src/autoexec.js) actually handles.
 // The previous list offered send_message/warn_member/mute_member/kick_member,
@@ -63,91 +65,93 @@ export default function AutoRulesView() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading rules...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading rules..." />;
 
   const rules = data.rules || [];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Zap className="size-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Auto Rules</h1>
-            <p className="text-xs text-muted-foreground">Event-triggered automation: event → conditions → actions</p>
+    <FadeIn>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Zap className="size-5 text-primary" />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Auto Rules</h1>
+              <p className="text-xs text-muted-foreground">Event-triggered automation: event → conditions → actions</p>
+            </div>
           </div>
+          <Button size="sm" onClick={() => { setShowNew(true); setEditingId(null); }}>
+            <Plus className="size-3.5 mr-1" /> New Rule
+          </Button>
         </div>
-        <Button size="sm" onClick={() => { setShowNew(true); setEditingId(null); }}>
-          <Plus className="size-3.5 mr-1" /> New Rule
-        </Button>
+
+        {rules.length === 0 && !showNew ? (
+          <Card className="border-border/40 bg-card/30">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              No auto rules yet. Create one to automate responses to events.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {rules.map(rule => (
+              <Card key={rule.id} className="border-border/40 bg-card/40">
+                <CardHeader className="flex flex-row items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <Switch checked={!!rule.enabled} onCheckedChange={() => toggleMutation.mutate(rule)} />
+                    <div>
+                      <CardTitle className="text-sm font-semibold">Rule #{rule.id}</CardTitle>
+                      <CardDescription className="text-xs">
+                        <Badge variant="outline" className="mr-2 text-[10px]">{rule.trigger_event}</Badge>
+                        <span className="text-muted-foreground">priority: {rule.priority}</span>
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => { setEditingId(rule.id); setShowNew(true); }}>
+                      <Edit className="size-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+                      if (!await confirm({
+                        title: `Delete rule #${rule.id}?`,
+                        description: "This automation rule (its trigger, conditions, and actions) will be permanently deleted. Cannot be undone.",
+                        confirmLabel: "Delete",
+                      })) return;
+                      deleteMutation.mutate(rule.id);
+                    }}>
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Conditions</h4>
+                      <pre className="bg-background-alt/30 p-2 rounded text-[10px] font-mono overflow-auto max-h-24">
+                        {JSON.stringify(rule.conditions, null, 2) || "{}"}
+                      </pre>
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Actions</h4>
+                      <pre className="bg-background-alt/30 p-2 rounded text-[10px] font-mono overflow-auto max-h-24">
+                        {JSON.stringify(rule.actions, null, 2) || "[]"}
+                      </pre>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {showNew && (
+          <RuleEditor
+            guildId={guildId}
+            editingId={editingId}
+            onClose={() => { setShowNew(false); setEditingId(null); }}
+          />
+        )}
       </div>
-
-      {rules.length === 0 && !showNew ? (
-        <Card className="border-border/40 bg-card/30">
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No auto rules yet. Create one to automate responses to events.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {rules.map(rule => (
-            <Card key={rule.id} className="border-border/40 bg-card/40">
-              <CardHeader className="flex flex-row items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  <Switch checked={!!rule.enabled} onCheckedChange={() => toggleMutation.mutate(rule)} />
-                  <div>
-                    <CardTitle className="text-sm font-semibold">Rule #{rule.id}</CardTitle>
-                    <CardDescription className="text-xs">
-                      <Badge variant="outline" className="mr-2 text-[10px]">{rule.trigger_event}</Badge>
-                      <span className="text-muted-foreground">priority: {rule.priority}</span>
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => { setEditingId(rule.id); setShowNew(true); }}>
-                    <Edit className="size-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
-                    if (!await confirm({
-                      title: `Delete rule #${rule.id}?`,
-                      description: "This automation rule (its trigger, conditions, and actions) will be permanently deleted. Cannot be undone.",
-                      confirmLabel: "Delete",
-                    })) return;
-                    deleteMutation.mutate(rule.id);
-                  }}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Conditions</h4>
-                    <pre className="bg-background-alt/30 p-2 rounded text-[10px] font-mono overflow-auto max-h-24">
-                      {JSON.stringify(rule.conditions, null, 2) || "{}"}
-                    </pre>
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">Actions</h4>
-                    <pre className="bg-background-alt/30 p-2 rounded text-[10px] font-mono overflow-auto max-h-24">
-                      {JSON.stringify(rule.actions, null, 2) || "[]"}
-                    </pre>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {showNew && (
-        <RuleEditor
-          guildId={guildId}
-          editingId={editingId}
-          onClose={() => { setShowNew(false); setEditingId(null); }}
-        />
-      )}
-    </div>
+    </FadeIn>
   );
 }
 

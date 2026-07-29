@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 interface SuggestionsConfig {
   enabled: boolean;
@@ -89,7 +91,7 @@ export default function SuggestionsView() {
   }, [data]);
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading suggestions config...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading suggestions config..." />;
 
   const dirty =
     enabled !== cfg!.enabled ||
@@ -107,88 +109,91 @@ export default function SuggestionsView() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold tracking-tight flex items-center gap-2.5">
-          <MessageCircle className="size-5 text-primary" /> Suggestions Board
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">Let members submit suggestions with 👍/👎 voting and staff review.</p>
-      </div>
-
+    <>
       <SaveBar dirty={dirty} saving={saveMutation.isPending} onSave={handleSave} onReset={handleReset} />
+      <FadeIn>
+        <div className="space-y-4 pb-24">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2.5">
+            <MessageCircle className="size-5 text-primary" /> Suggestions Board
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Let members submit suggestions with 👍/👎 voting and staff review.</p>
+        </div>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-sm font-semibold">Suggestions</CardTitle>
-            <CardDescription className="text-xs">Members use <code>/suggest</code> to post to the board channel</CardDescription>
-          </div>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <label className="text-xs text-muted-foreground">Board Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CardTitle className="text-sm font-semibold">Suggestions</CardTitle>
+              <CardDescription className="text-xs">Members use <code>/suggest</code> to post to the board channel</CardDescription>
             </div>
-          </div>
-          <div className="flex items-center gap-6 pt-2 flex-wrap">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={anonymous} onCheckedChange={setAnonymous} /> Anonymous submissions
-            </label>
-          </div>
-        </CardContent>
-      </Card>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Board Channel</label>
+                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-6 pt-2 flex-wrap">
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <Switch checked={anonymous} onCheckedChange={setAnonymous} /> Anonymous submissions
+              </label>
+            </div>
+          </CardContent>
+        </Card>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader><CardTitle className="text-sm font-semibold">Recent Suggestions</CardTitle></CardHeader>
-        <CardContent>
-          {!data.recent?.length ? (
-            <p className="text-xs text-muted-foreground">No suggestions submitted yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Suggestion</TableHead>
-                  <TableHead className="w-24">Votes</TableHead>
-                  <TableHead className="w-28">Status</TableHead>
-                  <TableHead className="w-56 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.recent.map(s => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
-                    <TableCell className="text-xs max-w-xs truncate">{s.content}</TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">👍 {s.upvotes} 👎 {s.downvotes}</TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_STYLES[s.status] || ""} variant="secondary">{s.status}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-1">
-                      {DECISIONS.map(d => (
-                        <Button
-                          key={d.status}
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs"
-                          disabled={s.status === d.status || statusMutation.isPending}
-                          onClick={() => statusMutation.mutate({ id: s.id, status: d.status })}
-                        >
-                          {d.label}
-                        </Button>
-                      ))}
-                    </TableCell>
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader><CardTitle className="text-sm font-semibold">Recent Suggestions</CardTitle></CardHeader>
+          <CardContent>
+            {!data.recent?.length ? (
+              <p className="text-xs text-muted-foreground">No suggestions submitted yet.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Suggestion</TableHead>
+                    <TableHead className="w-24">Votes</TableHead>
+                    <TableHead className="w-28">Status</TableHead>
+                    <TableHead className="w-56 text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                </TableHeader>
+                <TableBody>
+                  {data.recent.map(s => (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{s.id}</TableCell>
+                      <TableCell className="text-xs max-w-xs truncate">{s.content}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">👍 {s.upvotes} 👎 {s.downvotes}</TableCell>
+                      <TableCell>
+                        <Badge className={STATUS_STYLES[s.status] || ""} variant="secondary">{s.status}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right space-x-1">
+                        {DECISIONS.map(d => (
+                          <Button
+                            key={d.status}
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
+                            disabled={s.status === d.status || statusMutation.isPending}
+                            onClick={() => statusMutation.mutate({ id: s.id, status: d.status })}
+                          >
+                            {d.label}
+                          </Button>
+                        ))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      </FadeIn>
+    </>
   );
 }

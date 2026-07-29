@@ -8,6 +8,8 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Gift, RefreshCw, Square, Dices } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 interface Giveaway {
   id: number;
@@ -65,87 +67,89 @@ export default function GiveawaysView() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading giveaways...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading giveaways..." />;
 
   const giveaways = data.giveaways || [];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Gift className="size-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Giveaways</h1>
-            <p className="text-xs text-muted-foreground">{giveaways.length} active giveaway{giveaways.length !== 1 ? "s" : ""} • start one with <span className="font-mono">/giveaway start</span></p>
+    <FadeIn>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Gift className="size-5 text-primary" />
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Giveaways</h1>
+              <p className="text-xs text-muted-foreground">{giveaways.length} active giveaway{giveaways.length !== 1 ? "s" : ""} • start one with <span className="font-mono">/giveaway start</span></p>
+            </div>
           </div>
+          <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`size-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+          </Button>
         </div>
-        <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`size-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-        </Button>
-      </div>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardContent className="p-0">
-          {giveaways.length === 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">No active giveaways. Start one in Discord with <span className="font-mono">/giveaway start</span>.</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-border/30">
-                  <TableHead className="text-xs w-12">ID</TableHead>
-                  <TableHead className="text-xs">Prize</TableHead>
-                  <TableHead className="text-xs">Channel</TableHead>
-                  <TableHead className="text-xs">Winners</TableHead>
-                  <TableHead className="text-xs">Entries</TableHead>
-                  <TableHead className="text-xs">Ends At</TableHead>
-                  <TableHead className="text-xs w-40"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {giveaways.map(g => {
-                  const channel = data.channels.find(c => c.id === g.channel_id);
-                  return (
-                    <TableRow key={g.id} className="border-b border-border/20">
-                      <TableCell className="text-xs font-mono text-muted-foreground">#{g.id}</TableCell>
-                      <TableCell className="text-xs max-w-xs truncate" title={g.prize}>{g.prize}</TableCell>
-                      <TableCell className="text-xs font-mono">#{channel?.name || g.channel_id}</TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline" className="text-[10px]">{g.winners_count}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{g.entry_count}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatEndsAt(g.ends_at)}</TableCell>
-                      <TableCell className="text-xs">
-                        <div className="flex gap-1 justify-end">
-                          <Button size="sm" variant="ghost" className="text-warning" disabled={endMutation.isPending} onClick={async () => {
-                            if (!await confirm({
-                              title: "End giveaway now?",
-                              description: `Winners will be drawn immediately for "${g.prize}".`,
-                              confirmLabel: "End",
-                            })) return;
-                            endMutation.mutate(g.id);
-                          }}>
-                            <Square className="size-3.5 mr-1" /> End
-                          </Button>
-                          <Button size="sm" variant="ghost" disabled={rerollMutation.isPending} onClick={async () => {
-                            if (!await confirm({
-                              title: "Reroll winners?",
-                              description: `Draw new winners for "${g.prize}". The giveaway must already be ended.`,
-                              confirmLabel: "Reroll",
-                            })) return;
-                            rerollMutation.mutate(g.id);
-                          }}>
-                            <Dices className="size-3.5 mr-1" /> Reroll
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+        <Card className="border-border/40 bg-card/40">
+          <CardContent className="p-0">
+            {giveaways.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">No active giveaways. Start one in Discord with <span className="font-mono">/giveaway start</span>.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/30">
+                    <TableHead className="text-xs w-12">ID</TableHead>
+                    <TableHead className="text-xs">Prize</TableHead>
+                    <TableHead className="text-xs">Channel</TableHead>
+                    <TableHead className="text-xs">Winners</TableHead>
+                    <TableHead className="text-xs">Entries</TableHead>
+                    <TableHead className="text-xs">Ends At</TableHead>
+                    <TableHead className="text-xs w-40"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {giveaways.map(g => {
+                    const channel = data.channels.find(c => c.id === g.channel_id);
+                    return (
+                      <TableRow key={g.id} className="border-b border-border/20">
+                        <TableCell className="text-xs font-mono text-muted-foreground">#{g.id}</TableCell>
+                        <TableCell className="text-xs max-w-xs truncate" title={g.prize}>{g.prize}</TableCell>
+                        <TableCell className="text-xs font-mono">#{channel?.name || g.channel_id}</TableCell>
+                        <TableCell className="text-xs">
+                          <Badge variant="outline" className="text-[10px]">{g.winners_count}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{g.entry_count}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatEndsAt(g.ends_at)}</TableCell>
+                        <TableCell className="text-xs">
+                          <div className="flex gap-1 justify-end">
+                            <Button size="sm" variant="ghost" className="text-warning" disabled={endMutation.isPending} onClick={async () => {
+                              if (!await confirm({
+                                title: "End giveaway now?",
+                                description: `Winners will be drawn immediately for "${g.prize}".`,
+                                confirmLabel: "End",
+                              })) return;
+                              endMutation.mutate(g.id);
+                            }}>
+                              <Square className="size-3.5 mr-1" /> End
+                            </Button>
+                            <Button size="sm" variant="ghost" disabled={rerollMutation.isPending} onClick={async () => {
+                              if (!await confirm({
+                                title: "Reroll winners?",
+                                description: `Draw new winners for "${g.prize}". The giveaway must already be ended.`,
+                                confirmLabel: "Reroll",
+                              })) return;
+                              rerollMutation.mutate(g.id);
+                            }}>
+                              <Dices className="size-3.5 mr-1" /> Reroll
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </FadeIn>
   );
 }

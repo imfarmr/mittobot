@@ -12,6 +12,8 @@ import { Coins, Plus, Trash2, Edit, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 interface EconomyConfig {
   dailyAmount: number; workMin: number; workMax: number;
@@ -197,217 +199,279 @@ export default function EconomyView() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Coins className="size-5 text-primary" />
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Economy</h1>
-          <p className="text-xs text-muted-foreground">
-            {statsData?.stats ? `${statsData.stats.userCount} users · ${(statsData.stats.totalWealth || 0).toLocaleString()} total wealth` : "Virtual currency system"}
-          </p>
+    <>
+      {tab === "config" && !cfgLoading && (
+        <SaveBar dirty={dirty} saving={saveConfigMutation.isPending} onSave={handleSaveConfig} onReset={() => setConfigDirty(null)} />
+      )}
+      <FadeIn>
+        <div className="space-y-4 pb-24">
+        <div className="flex items-center gap-3">
+          <Coins className="size-5 text-primary" />
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Economy</h1>
+            <p className="text-xs text-muted-foreground">
+              {statsData?.stats ? `${statsData.stats.userCount} users · ${(statsData.stats.totalWealth || 0).toLocaleString()} total wealth` : "Virtual currency system"}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="flex gap-1 border-b border-border/30">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px ${tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <div className="flex gap-1 border-b border-border/30">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-xs font-medium transition-colors border-b-2 -mb-px ${tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-      {tab === "config" && (
-        <>
-          {cfgLoading ? (
-            <div className="text-xs text-muted-foreground py-4">Loading config...</div>
-          ) : (
-            <>
-              <SaveBar dirty={dirty} saving={saveConfigMutation.isPending} onSave={handleSaveConfig} onReset={() => setConfigDirty(null)} />
-              <Card className="border-border/40 bg-card/40">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-sm font-semibold">Economy Settings</CardTitle>
-                    <CardDescription className="text-xs">Daily, work, and gamble parameters</CardDescription>
-                  </div>
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
-                    if (!await confirm({
-                      title: "Reset all economy data?",
-                      description: "This permanently deletes every user's wallet, bank, the config, and all shop items for this guild. Cannot be undone.",
-                      confirmLabel: "Reset everything",
-                    })) return;
-                    resetMutation.mutate();
-                  }}>
-                    <RotateCcw className="size-3.5 mr-1" /> Reset All
+        {tab === "config" && (
+          <>
+            {cfgLoading ? (
+              <LoadingFallback text="Loading config..." variant="inline" />
+            ) : (
+              <>
+                <Card className="border-border/40 bg-card/40">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-sm font-semibold">Economy Settings</CardTitle>
+                      <CardDescription className="text-xs">Daily, work, and gamble parameters</CardDescription>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+                      if (!await confirm({
+                        title: "Reset all economy data?",
+                        description: "This permanently deletes every user's wallet, bank, the config, and all shop items for this guild. Cannot be undone.",
+                        confirmLabel: "Reset everything",
+                      })) return;
+                      resetMutation.mutate();
+                    }}>
+                      <RotateCcw className="size-3.5 mr-1" /> Reset All
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {[
+                        { key: "dailyAmount", label: "Daily Amount", min: 1 },
+                        { key: "workMin", label: "Work Min", min: 1 },
+                        { key: "workMax", label: "Work Max", min: 1 },
+                        { key: "interestRate", label: "Interest Rate (%)", min: 0, max: 100, step: 0.1 },
+                        { key: "taxRate", label: "Tax Rate (%)", min: 0, max: 100, step: 0.1 },
+                      ].map(f => (
+                        <div key={f.key}>
+                          <label className="text-xs text-muted-foreground">{f.label}</label>
+                          <Input type="number" className="mt-1 text-xs font-mono"
+                            value={cfgValue(f.key as keyof EconomyConfig)}
+                            min={f.min} max={f.max} step={f.step}
+                            onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-border/30">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3">🎰 Slots</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { key: "slotsMinBet", label: "Min Bet", min: 1 },
+                          { key: "slotsMaxBet", label: "Max Bet", min: 1 },
+                          { key: "slotsWinOdds", label: "Win Odds (0-1)", min: 0, max: 1, step: 0.01 },
+                          { key: "slotsJackpotMultiplier", label: "Jackpot ×", min: 1 },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label className="text-xs text-muted-foreground">{f.label}</label>
+                            <Input type="number" className="mt-1 text-xs font-mono"
+                              value={cfgValue(f.key as keyof EconomyConfig)}
+                              min={f.min} max={f.max} step={f.step}
+                              onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-border/30">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3">🃏 Blackjack · 🪙 Betflip · 🎲 High/Low</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { key: "blackjackMinBet", label: "BJ Min Bet", min: 1 },
+                          { key: "blackjackMaxBet", label: "BJ Max Bet", min: 1 },
+                          { key: "blackjackPayout", label: "BJ Payout ×", min: 1, max: 3, step: 0.1 },
+                          { key: "coinflipMinBet", label: "Betflip Min", min: 1 },
+                          { key: "coinflipMaxBet", label: "Betflip Max", min: 1 },
+                          { key: "highlowMinBet", label: "High/Low Min", min: 1 },
+                          { key: "highlowMaxBet", label: "High/Low Max", min: 1 },
+                          { key: "highlowDiceSides", label: "Dice Sides", min: 2, max: 100 },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label className="text-xs text-muted-foreground">{f.label}</label>
+                            <Input type="number" className="mt-1 text-xs font-mono"
+                              value={cfgValue(f.key as keyof EconomyConfig)}
+                              min={f.min} max={f.max} step={f.step}
+                              onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t border-border/30">
+                      <p className="text-xs font-semibold text-muted-foreground mb-3">🎣 Fish · ⛏️ Mine · 🧠 Trivia · 🔤 Wordle</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[
+                          { key: "fishMinBet", label: "Fish Cost", min: 1 },
+                          { key: "mineMinBet", label: "Mine Cost", min: 1 },
+                          { key: "triviaStreakBonus", label: "Trivia Streak Bonus", min: 0, max: 10, step: 0.05 },
+                          { key: "wordleStreakBonus", label: "Wordle Streak Bonus", min: 0, max: 10, step: 0.05 },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label className="text-xs text-muted-foreground">{f.label}</label>
+                            <Input type="number" className="mt-1 text-xs font-mono"
+                              value={cfgValue(f.key as keyof EconomyConfig)}
+                              min={f.min} max={f.max} step={f.step}
+                              onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-muted-foreground">Wordle</label>
+                          <Button size="sm" variant={config.wordleEnabled === 0 ? "outline" : "default"}
+                            className="text-xs"
+                            onClick={() => handleConfigChange("wordleEnabled", config.wordleEnabled === 0 ? "1" : "0")}>
+                            {config.wordleEnabled === 0 ? "Disabled" : "Enabled"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </>
+        )}
+
+        {tab === "shop" && (
+          <>
+            <Card className="border-border/40 bg-card/40">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold">Add Shop Item</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  <Input placeholder="Name" className="text-xs" value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))} />
+                  <Input placeholder="Description" className="text-xs" value={newItem.description} onChange={e => setNewItem(p => ({ ...p, description: e.target.value }))} />
+                  <Input type="number" placeholder="Price" className="text-xs font-mono" value={newItem.price} onChange={e => setNewItem(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} />
+                  <Input type="number" placeholder="Stock (-1 = ∞)" className="text-xs font-mono" value={newItem.stock} onChange={e => setNewItem(p => ({ ...p, stock: parseStock(e.target.value) }))} />
+                  <Button size="sm" onClick={() => addItemMutation.mutate(newItem)} disabled={!newItem.name || newItem.price < 1}>
+                    <Plus className="size-3.5 mr-1" /> Add
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/40 bg-card/40">
+              <CardContent className="p-0">
+                {shopLoading ? (
+                  <LoadingFallback text="Loading shop..." variant="inline" />
+                ) : !shopData?.items?.length ? (
+                  <div className="py-12 text-center text-sm text-muted-foreground">No shop items yet.</div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-b border-border/30">
+                        <TableHead className="text-xs">Name</TableHead>
+                        <TableHead className="text-xs">Description</TableHead>
+                        <TableHead className="text-xs">Price</TableHead>
+                        <TableHead className="text-xs">Role</TableHead>
+                        <TableHead className="text-xs">Stock</TableHead>
+                        <TableHead className="text-xs w-20"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shopData.items.map(item => (
+                        <TableRow key={item.id} className="border-b border-border/20">
+                          <TableCell className="text-xs font-semibold">{item.name}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{item.description}</TableCell>
+                          <TableCell className="text-xs font-mono">{item.price.toLocaleString()}</TableCell>
+                          <TableCell className="text-xs">{item.roleName ? <Badge variant="outline" className="text-[10px]">@{item.roleName}</Badge> : <span className="text-muted-foreground/40">—</span>}</TableCell>
+                          <TableCell className="text-xs">{item.stock === -1 ? <span className="text-muted-foreground/40">∞</span> : item.stock}</TableCell>
+                          <TableCell className="text-xs">
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="ghost" onClick={() => {
+                                if (editingItem?.id === item.id) {
+                                  setEditingItem(null);
+                                  setEditDraft(null);
+                                } else {
+                                  setEditingItem(item);
+                                  setEditDraft({ name: item.name, description: item.description, price: String(item.price), stock: String(item.stock) });
+                                }
+                              }}>
+                                <Edit className="size-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+                                if (!await confirm({
+                                  title: `Delete shop item "${item.name}"?`,
+                                  description: "This permanently removes the item from the shop. Cannot be undone.",
+                                  confirmLabel: "Delete",
+                                })) return;
+                                deleteItemMutation.mutate(item.id);
+                              }}>
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            {editingItem && editDraft && (
+              <Card className="border-border/40 bg-card/40">
+                <CardHeader>
+                  <CardTitle className="text-sm font-semibold">Edit: {editingItem.name}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {[
-                      { key: "dailyAmount", label: "Daily Amount", min: 1 },
-                      { key: "workMin", label: "Work Min", min: 1 },
-                      { key: "workMax", label: "Work Max", min: 1 },
-                      { key: "interestRate", label: "Interest Rate (%)", min: 0, max: 100, step: 0.1 },
-                      { key: "taxRate", label: "Tax Rate (%)", min: 0, max: 100, step: 0.1 },
-                    ].map(f => (
-                      <div key={f.key}>
-                        <label className="text-xs text-muted-foreground">{f.label}</label>
-                        <Input type="number" className="mt-1 text-xs font-mono"
-                          value={cfgValue(f.key as keyof EconomyConfig)}
-                          min={f.min} max={f.max} step={f.step}
-                          onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                    <Input className="text-xs" placeholder="Name" value={editDraft.name} onChange={e => setEditDraft(d => d ? { ...d, name: e.target.value } : d)} />
+                    <Input className="text-xs" placeholder="Description" value={editDraft.description} onChange={e => setEditDraft(d => d ? { ...d, description: e.target.value } : d)} />
+                    <Input className="text-xs font-mono" type="number" placeholder="Price" value={editDraft.price} onChange={e => setEditDraft(d => d ? { ...d, price: e.target.value } : d)} />
+                    <Input className="text-xs font-mono" type="number" placeholder="Stock (-1 = ∞)" value={editDraft.stock} onChange={e => setEditDraft(d => d ? { ...d, stock: e.target.value } : d)} />
                   </div>
-
-                  <div className="mt-5 pt-4 border-t border-border/30">
-                    <p className="text-xs font-semibold text-muted-foreground mb-3">🎰 Slots</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[
-                        { key: "slotsMinBet", label: "Min Bet", min: 1 },
-                        { key: "slotsMaxBet", label: "Max Bet", min: 1 },
-                        { key: "slotsWinOdds", label: "Win Odds (0-1)", min: 0, max: 1, step: 0.01 },
-                        { key: "slotsJackpotMultiplier", label: "Jackpot ×", min: 1 },
-                      ].map(f => (
-                        <div key={f.key}>
-                          <label className="text-xs text-muted-foreground">{f.label}</label>
-                          <Input type="number" className="mt-1 text-xs font-mono"
-                            value={cfgValue(f.key as keyof EconomyConfig)}
-                            min={f.min} max={f.max} step={f.step}
-                            onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-border/30">
-                    <p className="text-xs font-semibold text-muted-foreground mb-3">🃏 Blackjack · 🪙 Betflip · 🎲 High/Low</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[
-                        { key: "blackjackMinBet", label: "BJ Min Bet", min: 1 },
-                        { key: "blackjackMaxBet", label: "BJ Max Bet", min: 1 },
-                        { key: "blackjackPayout", label: "BJ Payout ×", min: 1, max: 3, step: 0.1 },
-                        { key: "coinflipMinBet", label: "Betflip Min", min: 1 },
-                        { key: "coinflipMaxBet", label: "Betflip Max", min: 1 },
-                        { key: "highlowMinBet", label: "High/Low Min", min: 1 },
-                        { key: "highlowMaxBet", label: "High/Low Max", min: 1 },
-                        { key: "highlowDiceSides", label: "Dice Sides", min: 2, max: 100 },
-                      ].map(f => (
-                        <div key={f.key}>
-                          <label className="text-xs text-muted-foreground">{f.label}</label>
-                          <Input type="number" className="mt-1 text-xs font-mono"
-                            value={cfgValue(f.key as keyof EconomyConfig)}
-                            min={f.min} max={f.max} step={f.step}
-                            onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-border/30">
-                    <p className="text-xs font-semibold text-muted-foreground mb-3">🎣 Fish · ⛏️ Mine · 🧠 Trivia · 🔤 Wordle</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[
-                        { key: "fishMinBet", label: "Fish Cost", min: 1 },
-                        { key: "mineMinBet", label: "Mine Cost", min: 1 },
-                        { key: "triviaStreakBonus", label: "Trivia Streak Bonus", min: 0, max: 10, step: 0.05 },
-                        { key: "wordleStreakBonus", label: "Wordle Streak Bonus", min: 0, max: 10, step: 0.05 },
-                      ].map(f => (
-                        <div key={f.key}>
-                          <label className="text-xs text-muted-foreground">{f.label}</label>
-                          <Input type="number" className="mt-1 text-xs font-mono"
-                            value={cfgValue(f.key as keyof EconomyConfig)}
-                            min={f.min} max={f.max} step={f.step}
-                            onChange={e => handleConfigChange(f.key as keyof EconomyConfig, e.target.value)} />
-                        </div>
-                      ))}
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-muted-foreground">Wordle</label>
-                        <Button size="sm" variant={config.wordleEnabled === 0 ? "outline" : "default"}
-                          className="text-xs"
-                          onClick={() => handleConfigChange("wordleEnabled", config.wordleEnabled === 0 ? "1" : "0")}>
-                          {config.wordleEnabled === 0 ? "Disabled" : "Enabled"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                  <Button size="sm" onClick={() => {
+                    const price = parseInt(editDraft.price);
+                    const stock = parseStock(editDraft.stock);
+                    if (!editDraft.name.trim() || Number.isNaN(price) || price < 1) { toast.error("Name and valid price required"); return; }
+                    editItemMutation.mutate({ id: editingItem.id, body: { name: editDraft.name, description: editDraft.description, price, stock } });
+                  }}>
+                    Save Changes
+                  </Button>
                 </CardContent>
               </Card>
-            </>
-          )}
-        </>
-      )}
+            )}
+          </>
+        )}
 
-      {tab === "shop" && (
-        <>
-          <Card className="border-border/40 bg-card/40">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Add Shop Item</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                <Input placeholder="Name" className="text-xs" value={newItem.name} onChange={e => setNewItem(p => ({ ...p, name: e.target.value }))} />
-                <Input placeholder="Description" className="text-xs" value={newItem.description} onChange={e => setNewItem(p => ({ ...p, description: e.target.value }))} />
-                <Input type="number" placeholder="Price" className="text-xs font-mono" value={newItem.price} onChange={e => setNewItem(p => ({ ...p, price: parseInt(e.target.value) || 0 }))} />
-                <Input type="number" placeholder="Stock (-1 = ∞)" className="text-xs font-mono" value={newItem.stock} onChange={e => setNewItem(p => ({ ...p, stock: parseStock(e.target.value) }))} />
-                <Button size="sm" onClick={() => addItemMutation.mutate(newItem)} disabled={!newItem.name || newItem.price < 1}>
-                  <Plus className="size-3.5 mr-1" /> Add
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
+        {tab === "leaderboard" && (
           <Card className="border-border/40 bg-card/40">
             <CardContent className="p-0">
-              {shopLoading ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Loading shop...</div>
-              ) : !shopData?.items?.length ? (
-                <div className="py-12 text-center text-sm text-muted-foreground">No shop items yet.</div>
+              {lbLoading ? (
+                <LoadingFallback text="Loading leaderboard..." variant="inline" />
+              ) : !lbData?.leaderboard?.length ? (
+                <div className="py-12 text-center text-sm text-muted-foreground">No economy data yet.</div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow className="border-b border-border/30">
-                      <TableHead className="text-xs">Name</TableHead>
-                      <TableHead className="text-xs">Description</TableHead>
-                      <TableHead className="text-xs">Price</TableHead>
-                      <TableHead className="text-xs">Role</TableHead>
-                      <TableHead className="text-xs">Stock</TableHead>
-                      <TableHead className="text-xs w-20"></TableHead>
+                      <TableHead className="text-xs w-10">#</TableHead>
+                      <TableHead className="text-xs">User</TableHead>
+                      <TableHead className="text-xs">ID</TableHead>
+                      <TableHead className="text-xs text-right">Balance</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {shopData.items.map(item => (
-                      <TableRow key={item.id} className="border-b border-border/20">
-                        <TableCell className="text-xs font-semibold">{item.name}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-xs truncate">{item.description}</TableCell>
-                        <TableCell className="text-xs font-mono">{item.price.toLocaleString()}</TableCell>
-                        <TableCell className="text-xs">{item.roleName ? <Badge variant="outline" className="text-[10px]">@{item.roleName}</Badge> : <span className="text-muted-foreground/40">—</span>}</TableCell>
-                        <TableCell className="text-xs">{item.stock === -1 ? <span className="text-muted-foreground/40">∞</span> : item.stock}</TableCell>
-                        <TableCell className="text-xs">
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" onClick={() => {
-                              if (editingItem?.id === item.id) {
-                                setEditingItem(null);
-                                setEditDraft(null);
-                              } else {
-                                setEditingItem(item);
-                                setEditDraft({ name: item.name, description: item.description, price: String(item.price), stock: String(item.stock) });
-                              }
-                            }}>
-                              <Edit className="size-3.5" />
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
-                              if (!await confirm({
-                                title: `Delete shop item "${item.name}"?`,
-                                description: "This permanently removes the item from the shop. Cannot be undone.",
-                                confirmLabel: "Delete",
-                              })) return;
-                              deleteItemMutation.mutate(item.id);
-                            }}>
-                              <Trash2 className="size-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                    {lbData.leaderboard.map((row, i) => (
+                      <TableRow key={row.user_id} className="border-b border-border/20">
+                        <TableCell className="text-xs font-bold text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell className="text-xs">{row.displayName}</TableCell>
+                        <TableCell className="text-xs font-mono text-muted-foreground">{row.user_id}</TableCell>
+                        <TableCell className="text-xs font-mono text-right">{row.balance.toLocaleString()}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -415,65 +479,9 @@ export default function EconomyView() {
               )}
             </CardContent>
           </Card>
-
-          {editingItem && editDraft && (
-            <Card className="border-border/40 bg-card/40">
-              <CardHeader>
-                <CardTitle className="text-sm font-semibold">Edit: {editingItem.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                  <Input className="text-xs" placeholder="Name" value={editDraft.name} onChange={e => setEditDraft(d => d ? { ...d, name: e.target.value } : d)} />
-                  <Input className="text-xs" placeholder="Description" value={editDraft.description} onChange={e => setEditDraft(d => d ? { ...d, description: e.target.value } : d)} />
-                  <Input className="text-xs font-mono" type="number" placeholder="Price" value={editDraft.price} onChange={e => setEditDraft(d => d ? { ...d, price: e.target.value } : d)} />
-                  <Input className="text-xs font-mono" type="number" placeholder="Stock (-1 = ∞)" value={editDraft.stock} onChange={e => setEditDraft(d => d ? { ...d, stock: e.target.value } : d)} />
-                </div>
-                <Button size="sm" onClick={() => {
-                  const price = parseInt(editDraft.price);
-                  const stock = parseStock(editDraft.stock);
-                  if (!editDraft.name.trim() || Number.isNaN(price) || price < 1) { toast.error("Name and valid price required"); return; }
-                  editItemMutation.mutate({ id: editingItem.id, body: { name: editDraft.name, description: editDraft.description, price, stock } });
-                }}>
-                  Save Changes
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
-
-      {tab === "leaderboard" && (
-        <Card className="border-border/40 bg-card/40">
-          <CardContent className="p-0">
-            {lbLoading ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">Loading leaderboard...</div>
-            ) : !lbData?.leaderboard?.length ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">No economy data yet.</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-border/30">
-                    <TableHead className="text-xs w-10">#</TableHead>
-                    <TableHead className="text-xs">User</TableHead>
-                    <TableHead className="text-xs">ID</TableHead>
-                    <TableHead className="text-xs text-right">Balance</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {lbData.leaderboard.map((row, i) => (
-                    <TableRow key={row.user_id} className="border-b border-border/20">
-                      <TableCell className="text-xs font-bold text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell className="text-xs">{row.displayName}</TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">{row.user_id}</TableCell>
-                      <TableCell className="text-xs font-mono text-right">{row.balance.toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        )}
+      </div>
+      </FadeIn>
+    </>
   );
 }

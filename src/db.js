@@ -623,6 +623,18 @@ function init() {
       created_at          BIGINT
     );
     CREATE INDEX IF NOT EXISTS social_connectors_guild ON social_connectors (guild_id);
+
+    -- Server Logging — per-guild configuration with per-event-type toggles.
+    -- events is a JSON blob: { messageDelete: true, messageUpdate: false, ... }
+    -- ignored_channels/ignored_roles are arrays of IDs to exclude from logging.
+    CREATE TABLE IF NOT EXISTS logging_config (
+      guild_id          TEXT PRIMARY KEY,
+      enabled           INTEGER DEFAULT 0,
+      channel_id        TEXT,
+      events            TEXT DEFAULT '{}',
+      ignored_channels  TEXT DEFAULT '[]',
+      ignored_roles     TEXT DEFAULT '[]'
+    );
   `);
 
   // Migrations for columns added after initial table creation
@@ -1864,6 +1876,35 @@ async function removeTempban(guildId, userId) {
   db.prepare("DELETE FROM tempbans WHERE guild_id = ? AND user_id = ?").run(guildId, userId);
 }
 
+// ── Server Logging config ──────────────────────────────────────────────
+async function getAllLoggingConfigs() {
+  return query("SELECT * FROM logging_config");
+}
+
+async function getLoggingConfigRow(guildId) {
+  return db.prepare("SELECT * FROM logging_config WHERE guild_id = ?").get(guildId);
+}
+
+async function setLoggingConfig(guildId, cfg) {
+  db.prepare(`
+    INSERT INTO logging_config (guild_id, enabled, channel_id, events, ignored_channels, ignored_roles)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      enabled = excluded.enabled,
+      channel_id = excluded.channel_id,
+      events = excluded.events,
+      ignored_channels = excluded.ignored_channels,
+      ignored_roles = excluded.ignored_roles
+  `).run(
+    guildId,
+    cfg.enabled ? 1 : 0,
+    cfg.channel_id || null,
+    JSON.stringify(cfg.events || {}),
+    JSON.stringify(cfg.ignored_channels || []),
+    JSON.stringify(cfg.ignored_roles || []),
+  );
+}
+
 function close() {
   db.close();
 }
@@ -2536,4 +2577,9 @@ module.exports = {
     if (def) return { prompt: def.prompt, source: "default" };
     return { prompt: null, source: null };
   },
+
+  // ── Server Logging ──────────────────────────────────────────────────────
+  getAllLoggingConfigs,
+  getLoggingConfigRow,
+  setLoggingConfig,
 };

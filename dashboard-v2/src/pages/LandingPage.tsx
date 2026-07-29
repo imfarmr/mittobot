@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { Terminal, Shield, Sparkles, Zap, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background bg-hero-grid flex flex-col justify-between">
+    <div className="min-h-screen bg-background bg-hero-grid bg-hero-grid--pan flex flex-col justify-between">
       {/* Navbar */}
       <header className="border-b border-border/40 backdrop-blur-md bg-background/60 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -29,64 +30,72 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-4xl mx-auto py-20">
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 animate-pulse">
-          <Sparkles className="size-3.5" />
-          ggboi Dashboard v2 is now live
-        </div>
+        <FadeIn delay={0} y={12}>
+          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 animate-pulse">
+            <Sparkles className="size-3.5" />
+            ggboi Dashboard v2 is now live
+          </div>
+        </FadeIn>
 
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
-          The ultimate control deck for <span className="text-primary">ggboi</span>
-        </h1>
+        <FadeIn delay={0.05} y={12}>
+          <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
+            The ultimate control deck for <span className="text-primary">ggboi</span>
+          </h1>
+        </FadeIn>
 
-        <p className="text-muted-foreground text-lg max-w-2xl mb-8">
-          Manage your server, configure advanced automation rules, review cases, and supervise the AI assistant from a unified flight telemetry control panel.
-        </p>
+        <FadeIn delay={0.1} y={12}>
+          <p className="text-muted-foreground text-lg max-w-2xl mb-8">
+            Manage your server, configure advanced automation rules, review cases, and supervise the AI assistant from a unified flight telemetry control panel.
+          </p>
+        </FadeIn>
 
-        <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
-          <Link to="/login">
-            <Button size="lg" className="w-full sm:w-auto font-semibold gap-2">
-              Launch Console
-              <ArrowRight className="size-4" />
-            </Button>
-          </Link>
-          <Link to="/docs">
-            <Button size="lg" variant="outline" className="w-full sm:w-auto font-semibold">
-              Read Documentation
-            </Button>
-          </Link>
-        </div>
+        <FadeIn delay={0.15} y={12}>
+          <div className="flex flex-col sm:flex-row items-center gap-4 justify-center">
+            <Link to="/login">
+              <Button size="lg" className="w-full sm:w-auto font-semibold gap-2 group">
+                Launch Console
+                <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+              </Button>
+            </Link>
+            <Link to="/docs">
+              <Button size="lg" variant="outline" className="w-full sm:w-auto font-semibold">
+                Read Documentation
+              </Button>
+            </Link>
+          </div>
+        </FadeIn>
 
         {/* Features grid */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24 text-left w-full max-w-5xl px-4">
-          <div className="bg-card p-6 rounded-xl border border-border/40 hover:border-primary/30 transition-all group">
-            <div className="size-10 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-all border border-primary/20">
-              <Shield className="size-5 text-primary" />
-            </div>
-            <h3 className="font-semibold text-lg mb-2">Ops-Level Moderation</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              Real-time automod rule builder, case evidence viewer, anti-raid gates, and active warning manager.
-            </p>
-          </div>
-
-          <div className="bg-card p-6 rounded-xl border border-border/40 hover:border-primary/30 transition-all group">
-            <div className="size-10 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-all border border-primary/20">
-              <Sparkles className="size-5 text-primary" />
-            </div>
-            <h3 className="font-semibold text-lg mb-2">Integrated AI Assistant</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              Supervise user conversations, search long-term AI memories, manage prompt packs, and review analytics.
-            </p>
-          </div>
-
-          <div className="bg-card p-6 rounded-xl border border-border/40 hover:border-primary/30 transition-all group">
-            <div className="size-10 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-all border border-primary/20">
-              <Zap className="size-5 text-primary" />
-            </div>
-            <h3 className="font-semibold text-lg mb-2">Automated Operations</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              Visual autoexec rule trigger engine, scheduled tasks, economy shop control, and server snapshot backups.
-            </p>
-          </div>
+          {[
+            {
+              icon: Shield,
+              title: "Ops-Level Moderation",
+              desc: "Real-time automod rule builder, case evidence viewer, anti-raid gates, and active warning manager."
+            },
+            {
+              icon: Sparkles,
+              title: "Integrated AI Assistant",
+              desc: "Supervise user conversations, search long-term AI memories, manage prompt packs, and review analytics."
+            },
+            {
+              icon: Zap,
+              title: "Automated Operations",
+              desc: "Visual autoexec rule trigger engine, scheduled tasks, economy shop control, and server snapshot backups."
+            }
+          ].map((feature, i) => (
+            <FadeIn key={feature.title} delay={0.25 + i * 0.05} y={16}>
+              <div className="bg-card p-6 rounded-xl border border-border/40 hover:border-primary/30 hover:-translate-y-1 hover:shadow-lg hover:shadow-black/20 transition-all duration-300 group h-full">
+                <div className="size-10 bg-primary/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300 border border-primary/20">
+                  <feature.icon className="size-5 text-primary" />
+                </div>
+                <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {feature.desc}
+                </p>
+              </div>
+            </FadeIn>
+          ))}
         </section>
       </main>
 

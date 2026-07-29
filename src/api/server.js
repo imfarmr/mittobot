@@ -139,7 +139,8 @@ function startApi(ctx) {
   // comma-separated list; required in production when the dashboard is NOT
   // served from the same origin (e.g. hosted on Vercel).
   const originList = (process.env.DASHBOARD_ORIGIN || "")
-    .split(",").map(s => s.trim()).filter(Boolean);
+    .split(",").map(s => s.trim()).filter(Boolean)
+    .map(o => o.replace(/\/$/, ""));
   if (!originList.length) {
     if (process.env.NODE_ENV === "production" && !servingDashboard) {
       console.error("[api] DASHBOARD_ORIGIN is required in production for CORS security. Set it to your dashboard URL(s).");
@@ -455,13 +456,37 @@ function startApi(ctx) {
   const OAUTH_STATE_TTL = 600_000; // 10 minutes
   const OAUTH_STATE_MAX_SIZE = 200; // Maximum number of OAuth states to track
 
+  // Resolve the dashboard origin for OAuth redirects. Prefer the configured
+  // whitelist, then the request's Origin/Referer (supplied by the browser in
+  // dev and same-origin production), then reconstruct from the request. We
+  // only accept http(s) origins and strip any path to avoid open redirects.
+  function deriveDashboardOrigin(req) {
+    const raw =
+      originList[0] ||
+      req.get("Origin") ||
+      req.get("Referer") ||
+      `${req.protocol}://${req.get("host")}` ||
+      "http://localhost:5174";
+
+    try {
+      const url = new URL(raw);
+      if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("invalid protocol");
+      return `${url.protocol}//${url.host}`;
+    } catch (err) {
+      // Should not happen in normal dev/prod, but keep a safe default.
+      console.warn("[api] Could not derive a valid dashboard origin from:", raw, "- falling back to localhost:5174");
+      return "http://localhost:5174";
+    }
+  }
+
   // Discord OAuth — redirect user to Discord's consent screen
   app.get("/api/auth/discord", (req, res) => {
     if (!HAS_DISCORD_OAUTH) {
       return res.status(501).json({ error: "Discord OAuth not configured" });
     }
     const state = crypto.randomBytes(16).toString("hex");
-    oauthStateStore.set(state, { createdAt: Date.now() });
+    const origin = deriveDashboardOrigin(req);
+    oauthStateStore.set(state, { createdAt: Date.now(), origin });
     const url = new URL("https://discord.com/api/oauth2/authorize");
     url.searchParams.set("client_id", DISCORD_CLIENT_ID);
     url.searchParams.set("redirect_uri", DISCORD_REDIRECT_URI);
@@ -488,14 +513,24 @@ function startApi(ctx) {
   // Discord OAuth callback — exchange code for token, fetch user, issue JWT
   app.get("/api/auth/discord/callback", async (req, res) => {
     const { code, state, error: oauthError } = req.query;
-    const dashOrigin = originList[0] || "http://0.0.0.0:5173";
+
+    // Resolve the dashboard origin. Prefer the value captured at the start of
+    // the OAuth flow, then the configured whitelist, then request-derived
+    // fallbacks. The stored origin was already validated when it was saved.
+    const stored = state ? oauthStateStore.get(state) : null;
+    let dashOrigin = deriveDashboardOrigin(req);
+    if (stored?.origin) dashOrigin = stored.origin;
+    if (originList.length && !originList.includes(dashOrigin)) {
+      // In production with a configured whitelist, enforce it strictly.
+      dashOrigin = originList[0];
+    }
 
     if (oauthError || !code) {
       return res.redirect(`${dashOrigin}#error=${encodeURIComponent(oauthError || "No authorization code received")}`);
     }
 
-    // Verify state to prevent CSRF
-    if (!state || !oauthStateStore.has(state)) {
+    // Verify state to prevent CSRF, then remove it so it cannot be replayed.
+    if (!state || !stored) {
       return res.redirect(`${dashOrigin}#error=${encodeURIComponent("Invalid OAuth state — try logging in again")}`);
     }
     oauthStateStore.delete(state);
@@ -1545,6 +1580,48 @@ function startApi(ctx) {
     res.json({ ok: true, config: next });
   });
 
+  // ─── Server Logging ─────────────────────────────────────────────────────
+  app.get("/api/logging", requireAuth, (req, res) => {
+    const logging = require("../logging");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    if (guildInfo.guildId && !userCanAccessGuild(req.user.sub, guildInfo.guildId, req.user.isOwner))
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    res.json({
+      guildId: guildInfo.guildId,
+      hasGuild: guildInfo.hasGuild,
+      channels: guildInfo.channels,
+      roles: guildInfo.roles,
+      config: guildInfo.guildId ? logging.getConfig(guildInfo.guildId) : logging.getConfig("_none"),
+      eventTypes: logging.EVENT_TYPES,
+    });
+  });
+
+  app.post("/api/logging", requireAuth, (req, res) => {
+    const logging = require("../logging");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    const guildId = guildInfo.guildId;
+    if (!guildId) return res.status(400).json({ error: "Bot is not in any guild yet" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
+    const b = req.body || {};
+    const okChan = v => v === null || /^\d{17,20}$/.test(v || "");
+    const patch = {};
+    if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+    if (okChan(b.channelId)) patch.channelId = b.channelId || null;
+    if (b.events && typeof b.events === "object") {
+      // Only accept known event type keys; coerce values to booleans.
+      const validKeys = new Set(Object.keys(logging.EVENT_TYPES));
+      const cleanEvents = {};
+      for (const [k, v] of Object.entries(b.events)) {
+        if (validKeys.has(k)) cleanEvents[k] = Boolean(v);
+      }
+      patch.events = cleanEvents;
+    }
+    if (Array.isArray(b.ignoredChannels)) patch.ignoredChannels = b.ignoredChannels.filter(c => /^\d{17,20}$/.test(c)).slice(0, 100);
+    if (Array.isArray(b.ignoredRoles)) patch.ignoredRoles = b.ignoredRoles.filter(r => /^\d{17,20}$/.test(r)).slice(0, 100);
+    const next = logging.setConfig(guildId, patch);
+    res.json({ ok: true, config: next });
+  });
+
   // ─── Birthdays ───────────────────────────────────────────────────────────
   app.get("/api/birthdays", requireAuth, (req, res) => {
     const birthdays = require("../birthdays");
@@ -2033,6 +2110,34 @@ function startApi(ctx) {
       await levelingMod.resetGuild(guildId);
       res.json({ ok: true });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Rank card image (PNG) ─────────────────────────────────────────────────
+  app.get("/api/leveling/rank/:userId", requireAuth, async (req, res) => {
+    const levelingMod = require("../leveling");
+    const { generateRankCard } = require("../canvas/rankCard");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    const guildId = guildInfo.guildId;
+    if (!guildId) return res.status(400).json({ error: "Bot is not in any guild yet" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
+
+    const userId = req.params.userId;
+    const data = levelingMod.getRankCardData(guildId, userId);
+    if (!data) return res.status(404).json({ error: "User not found on leaderboard" });
+
+    const guild = resolveGuild(guildId);
+    const member = guild?.members?.cache?.get(userId);
+    const user = member?.user || { username: userId, displayAvatarURL: () => null };
+
+    try {
+      const buffer = await generateRankCard(user, data);
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "private, max-age=30");
+      res.send(buffer);
+    } catch (err) {
+      console.error("[api] Rank card generation error:", err.message);
       res.status(500).json({ error: err.message });
     }
   });

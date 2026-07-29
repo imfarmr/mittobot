@@ -75,11 +75,25 @@ function resolveUserId(arg) {
   return validation.isValidUserId(arg) ? arg : null;
 }
 
+// ─── Output sanitization for mass-ping prevention ───────────────────────────
+// Strips literal @everyone / @here and all Discord mention syntax from AI
+// responses before they reach Discord. Also applied to persisted history so
+// the model doesn't learn the pattern from its own outputs.
+function sanitizeMentions(text) {
+  if (typeof text !== "string") return text;
+  return text
+    .replace(/@everyone/gi, "everyone")
+    .replace(/@here/gi, "here")
+    .replace(/<@&?\d{17,20}>/g, () => "[mention]")
+    .replace(/<@!\d{17,20}>/g, () => "[mention]");
+}
+
 module.exports = {
   get PREFIX() { return settings.get("prefix"); },
   MAX_PURGE, OWNER_IDS, ANCHOR_ROLE_ID,
   getPrefix, isOwner, isAuthorized, canCreateCustomRole,
   successEmbed, errorEmbed, noPermEmbed,
   parseDuration, formatDuration, resolveUserId,
+  sanitizeMentions,
   validation,
 };

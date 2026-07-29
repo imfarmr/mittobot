@@ -1,11 +1,13 @@
 import React, { Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useAccentColor } from "@/hooks/useAccentColor";
 import LandingPage from "@/pages/LandingPage";
 import DocsPage from "@/pages/DocsPage";
 import LoginPage from "@/pages/LoginPage";
 import ServerPickerPage from "@/pages/ServerPickerPage";
 import AppShell from "@/components/app/AppShell";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
 
 // Lazy-loaded pages for optimization
 const Overview = React.lazy(() => import("@/pages/Overview"));
@@ -36,6 +38,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useAccentColor();
   return (
     <Routes>
       {/* Public Pages */}
@@ -138,11 +141,4 @@ export default function App() {
   );
 }
 
-function LoadingFallback({ text }: { text: string }) {
-  return (
-    <div className="p-8 flex flex-col items-center justify-center space-y-4 py-20">
-      <div className="size-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      <span className="text-muted-foreground text-xs font-mono">{text}</span>
-    </div>
-  );
-}
+

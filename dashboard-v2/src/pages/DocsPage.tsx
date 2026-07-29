@@ -9,17 +9,17 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 
 const CATEGORY_STYLES: Record<string, { emoji: string; color: string; label: string }> = {
-  utility:   { emoji: "🛠️",  color: "text-indigo-400 border-indigo-500/30", label: "Utility" },
-  info:      { emoji: "ℹ️",   color: "text-emerald-400 border-emerald-500/30", label: "Info" },
-  fun:       { emoji: "🎉",   color: "text-pink-400 border-pink-500/30", label: "Fun" },
-  fakemod:   { emoji: "🎭",   color: "text-yellow-400 border-yellow-500/30", label: "Fake Mod" },
-  realmod:   { emoji: "🛡️",   color: "text-rose-400 border-rose-500/30", label: "Moderation" },
-  admin:     { emoji: "⚙️",   color: "text-purple-400 border-purple-500/30", label: "Admin" },
-  dynamic:   { emoji: "📦",   color: "text-amber-400 border-amber-500/30", label: "Modules" },
+  utility: { emoji: "🛠️",  color: "text-category-utility border-category-utility/30", label: "Utility" },
+  info:    { emoji: "ℹ️",   color: "text-category-info border-category-info/30", label: "Info" },
+  fun:     { emoji: "🎉",   color: "text-category-fun border-category-fun/30", label: "Fun" },
+  fakemod: { emoji: "🎭",   color: "text-category-fakemod border-category-fakemod/30", label: "Fake Mod" },
+  realmod: { emoji: "🛡️",   color: "text-category-realmod border-category-realmod/30", label: "Moderation" },
+  admin:   { emoji: "⚙️",   color: "text-category-admin border-category-admin/30", label: "Admin" },
+  dynamic: { emoji: "📦",   color: "text-category-dynamic border-category-dynamic/30", label: "Modules" },
 };
 
 function getCatStyle(catId: string) {
-  return CATEGORY_STYLES[catId] || { emoji: "❓", color: "text-gray-400 border-gray-500/30", label: catId };
+  return CATEGORY_STYLES[catId] || { emoji: "❓", color: "text-category-fallback border-category-fallback/30", label: catId };
 }
 
 const PERM_LABELS: Record<string, string> = {

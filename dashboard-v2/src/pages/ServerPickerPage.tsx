@@ -65,7 +65,7 @@ export default function ServerPickerPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-base tracking-tight">{user.tag}</span>
                     {user.isOwner && (
-                      <span className="inline-flex items-center gap-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase">
+                      <span className="inline-flex items-center gap-1 bg-status-owner/10 text-status-owner border border-status-owner/20 text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase">
                         <Crown className="size-2.5" />
                         Owner
                       </span>

@@ -4,6 +4,7 @@ const groqProvider = require("./ai/providers/groq");
 const { processMessageImages, buildContentParts } = require("./ai/images");
 const { getPersonality, DEFAULT_PERSONALITY } = require("./ai/personalities");
 const { extractMemoriesAsync } = require("./ai/memory-extractor");
+const { sanitizeMentions } = require("./utils");
 const db = require("./db");
 
 const safe = require("./safe");
@@ -813,14 +814,20 @@ async function handleAiMessage(message, ctx) {
     // Final sanitisation pass — strip any tool-call JSON that leaked through
     finalReply = cleanResponse(finalReply, thinkingEnabled);
 
-    const chunks = splitResponse(finalReply);
+    // Sanitize once and reuse for both the displayed message and history.
+    const safeReply = sanitizeMentions(finalReply);
+    const chunks = splitResponse(safeReply);
     for (let i = 0; i < chunks.length; i++) {
+      const payload = {
+        content: chunks[i],
+        allowedMentions: { parse: [] },
+      };
       if (i === 0) {
-        await message.reply(chunks[i]);
+        await message.reply(payload);
       } else {
         // Natural delay between multi-message responses (300-800ms)
         await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
-        await message.channel.send(chunks[i]);
+        await message.channel.send(payload);
       }
     }
 
@@ -849,7 +856,7 @@ async function handleAiMessage(message, ctx) {
         }).join("\n");
         try { db.addConversationTurn(scope, key, "system", `Tool results: ${toolSummary}`.slice(0, 1500)); } catch (e) { console.error("[ai] persist tool interactions:", e.message); }
       }
-      try { db.addConversationTurn(scope, key, "assistant", finalReply.slice(0, 1500)); } catch (e) { console.error("[ai] persist conversation turn:", e.message); }
+      try { db.addConversationTurn(scope, key, "assistant", safeReply.slice(0, 1500)); } catch (e) { console.error("[ai] persist conversation turn:", e.message); }
       db.trimConversationHistory(scope, key, 40);
     }
 
@@ -884,7 +891,7 @@ async function handleAiMessage(message, ctx) {
     } catch { /* analytics push should never crash the bot */ }
     // Reply with error, but don't throw — prevent unhandled rejection crashing the process
     try {
-      await safe.reply(message, { content: `❌ AI error: ${err.message}` }, "AI error reply");
+      await safe.reply(message, { content: `❌ AI error: ${err.message}`, allowedMentions: { parse: [] } }, "AI error reply");
     } catch { /* best-effort — if replying fails, just log */ }
     return true;
   }
@@ -1120,6 +1127,7 @@ module.exports = {
   parseFallbackList,
   cleanResponse,
   sanitizeUserInput,
+  sanitizeMentions,
   getBusyProviders,
   getActiveConvoCount,
   resolveModel: groqProvider.resolveModel,

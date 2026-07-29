@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { Flame, Trash2, Plus } from "lucide-react";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 const ACTIONS = ["kick", "ban", "timeout"];
 const TIMEOUT_PRESETS = [
@@ -90,7 +92,7 @@ export default function DangerzoneView() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading dangerzone config...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading dangerzone config..." />;
 
   const channelEntries = Object.entries(edits || {});
   const dirty = JSON.stringify(channelEntries) !== JSON.stringify(Object.entries(data.config.channels || {}));
@@ -124,107 +126,110 @@ export default function DangerzoneView() {
   };
 
   return (
-    <div className="space-y-4">
+    <>
       <SaveBar dirty={dirty} saving={updateMutation.isPending} onSave={handleSave} onReset={() => setEdits(data.config.channels || {})} />
-
-      <div className="flex items-center gap-3">
-        <Flame className="size-5 text-destructive" />
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Dangerzone Trap Channels</h1>
-          <p className="text-xs text-muted-foreground">Channels that auto-punish any message posted in them (catches hacked accounts).</p>
+      <FadeIn>
+        <div className="space-y-4 pb-24">
+        <div className="flex items-center gap-3">
+          <Flame className="size-5 text-destructive" />
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Dangerzone Trap Channels</h1>
+            <p className="text-xs text-muted-foreground">Channels that auto-punish any message posted in them (catches hacked accounts).</p>
+          </div>
         </div>
-      </div>
 
-      <Card className="border-border/40 bg-card/40">
-        <CardHeader><CardTitle className="text-sm font-semibold">Add Trap Channel</CardTitle><CardDescription className="text-xs">Pick a channel and the punishment that triggers when anyone posts in it</CardDescription></CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[200px]">
-              <label className="text-xs text-muted-foreground">Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={selectedCh} onChange={e => setSelectedCh(e.target.value)}>
-                <option value="">— Select channel —</option>
-                {data.channels.filter(c => !channelEntries.some(([id]) => id === c.id)).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Action</label>
-              <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newAction} onChange={e => setNewAction(e.target.value)}>
-                {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
-            {newAction === "timeout" && (
-              <div>
-                <label className="text-xs text-muted-foreground">Duration</label>
-                <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newTimeout} onChange={e => setNewTimeout(e.target.value)}>
-                  {TIMEOUT_PRESETS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        <Card className="border-border/40 bg-card/40">
+          <CardHeader><CardTitle className="text-sm font-semibold">Add Trap Channel</CardTitle><CardDescription className="text-xs">Pick a channel and the punishment that triggers when anyone posts in it</CardDescription></CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <label className="text-xs text-muted-foreground">Channel</label>
+                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={selectedCh} onChange={e => setSelectedCh(e.target.value)}>
+                  <option value="">— Select channel —</option>
+                  {data.channels.filter(c => !channelEntries.some(([id]) => id === c.id)).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
                 </select>
               </div>
-            )}
-            <Button size="sm" onClick={handleAdd} disabled={!selectedCh || addMutation.isPending}>
-              <Plus className="size-3.5 mr-1" /> Add
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {channelEntries.length === 0 ? (
-        <Card className="border-border/40 bg-card/30">
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">No dangerzone channels configured yet.</CardContent>
+              <div>
+                <label className="text-xs text-muted-foreground">Action</label>
+                <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newAction} onChange={e => setNewAction(e.target.value)}>
+                  {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              {newAction === "timeout" && (
+                <div>
+                  <label className="text-xs text-muted-foreground">Duration</label>
+                  <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newTimeout} onChange={e => setNewTimeout(e.target.value)}>
+                    {TIMEOUT_PRESETS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+              )}
+              <Button size="sm" onClick={handleAdd} disabled={!selectedCh || addMutation.isPending}>
+                <Plus className="size-3.5 mr-1" /> Add
+              </Button>
+            </div>
+          </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-2">
-          {channelEntries.map(([channelId, cfg]) => {
-            const channel = data.channels.find(c => c.id === channelId);
-            return (
-              <Card key={channelId} className="border-border/40 bg-card/40">
-                <CardHeader className="flex flex-row items-center justify-between py-3">
-                  <div className="flex items-center gap-2">
-                    <Flame className="size-4 text-destructive" />
-                    <CardTitle className="text-sm font-semibold">#{channel?.name || channelId}</CardTitle>
-                  </div>
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
-                    if (!await confirm({
-                      title: `Remove trap channel #${channel?.name || channelId}?`,
-                      description: "This disables dangerzone protection for the channel. Any message posted there will no longer be auto-punished.",
-                      confirmLabel: "Remove",
-                    })) return;
-                    removeMutation.mutate({ channelId });
-                  }}>
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Action</label>
-                    <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.action || "kick"} onChange={e => updateChannelField(channelId, "action", e.target.value)}>
-                      {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Timeout (ms)</label>
-                    <Input className="mt-1 text-xs font-mono" type="number" value={cfg.timeoutMs || 0} onChange={e => updateChannelField(channelId, "timeoutMs", parseInt(e.target.value) || 0)} disabled={cfg.action !== "timeout"} />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Log Channel</label>
-                    <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.logChannelId || ""} onChange={e => updateChannelField(channelId, "logChannelId", e.target.value || null)}>
-                      <option value="">— None —</option>
-                      {data.channels.filter(c => c.id !== channelId).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Exempt Role IDs</label>
-                    <Input className="mt-1 text-xs font-mono" value={(cfg.exemptRoles || []).join(", ")} onChange={e => updateChannelField(channelId, "exemptRoles", e.target.value.split(/[,\s]+/).filter(Boolean))} placeholder="role_id1, role_id2" />
-                  </div>
-                  <div className="col-span-2 md:col-span-4">
-                    <label className="text-xs text-muted-foreground">Reason</label>
-                    <Input className="mt-1 text-xs font-mono" value={cfg.reason || ""} onChange={e => updateChannelField(channelId, "reason", e.target.value)} placeholder="Posted in dangerzone" />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-    </div>
+
+        {channelEntries.length === 0 ? (
+          <Card className="border-border/40 bg-card/30">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">No dangerzone channels configured yet.</CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {channelEntries.map(([channelId, cfg]) => {
+              const channel = data.channels.find(c => c.id === channelId);
+              return (
+                <Card key={channelId} className="border-border/40 bg-card/40">
+                  <CardHeader className="flex flex-row items-center justify-between py-3">
+                    <div className="flex items-center gap-2">
+                      <Flame className="size-4 text-destructive" />
+                      <CardTitle className="text-sm font-semibold">#{channel?.name || channelId}</CardTitle>
+                    </div>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={async () => {
+                      if (!await confirm({
+                        title: `Remove trap channel #${channel?.name || channelId}?`,
+                        description: "This disables dangerzone protection for the channel. Any message posted there will no longer be auto-punished.",
+                        confirmLabel: "Remove",
+                      })) return;
+                      removeMutation.mutate({ channelId });
+                    }}>
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Action</label>
+                      <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.action || "kick"} onChange={e => updateChannelField(channelId, "action", e.target.value)}>
+                        {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Timeout (ms)</label>
+                      <Input className="mt-1 text-xs font-mono" type="number" value={cfg.timeoutMs || 0} onChange={e => updateChannelField(channelId, "timeoutMs", parseInt(e.target.value) || 0)} disabled={cfg.action !== "timeout"} />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Log Channel</label>
+                      <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.logChannelId || ""} onChange={e => updateChannelField(channelId, "logChannelId", e.target.value || null)}>
+                        <option value="">— None —</option>
+                        {data.channels.filter(c => c.id !== channelId).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Exempt Role IDs</label>
+                      <Input className="mt-1 text-xs font-mono" value={(cfg.exemptRoles || []).join(", ")} onChange={e => updateChannelField(channelId, "exemptRoles", e.target.value.split(/[,\s]+/).filter(Boolean))} placeholder="role_id1, role_id2" />
+                    </div>
+                    <div className="col-span-2 md:col-span-4">
+                      <label className="text-xs text-muted-foreground">Reason</label>
+                      <Input className="mt-1 text-xs font-mono" value={cfg.reason || ""} onChange={e => updateChannelField(channelId, "reason", e.target.value)} placeholder="Posted in dangerzone" />
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      </FadeIn>
+    </>
   );
 }

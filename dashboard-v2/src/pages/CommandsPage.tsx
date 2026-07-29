@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useGuild } from "@/hooks/useGuild";
 import { useAuth } from "@/hooks/useAuth";
 import { guildPath } from "@/lib/api";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
 
 interface CommandConfig {
   enabled: boolean;
@@ -87,7 +88,7 @@ export default function CommandsPage() {
   });
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading commands...</div>;
+  if (isLoading || !data) return <LoadingFallback text="Loading commands..." />;
 
   const prefix = data.prefix || "$";
   const permLabels = data.permLabels || {};

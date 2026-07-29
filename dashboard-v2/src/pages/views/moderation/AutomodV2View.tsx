@@ -11,7 +11,10 @@ import { toast } from "sonner";
 import { useGuild } from "@/hooks/useGuild";
 import { guildPath } from "@/lib/api";
 import { SaveBar } from "@/components/app/SaveBar";
+import { ErrorRetry } from "@/components/app/ErrorRetry";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { LoadingFallback } from "@/components/app/LoadingFallback";
+import { FadeIn } from "@/components/animations/FadeIn";
 
 // ─── Types: the full unified automod config shape ───────────────────────────
 interface BaseRule { enabled?: boolean; action: string; [k: string]: any }
@@ -60,10 +63,12 @@ const DEFAULT_THRESHOLDS: HeatThreshold[] = [
 // A small labelled toggle row used across the extended-rule cards.
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-xs">{label}</span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </div>
+    <FadeIn>
+      <div className="flex items-center justify-between py-1.5">
+        <span className="text-xs">{label}</span>
+        <Switch checked={checked} onCheckedChange={onChange} />
+      </div>
+    </FadeIn>
   );
 }
 
@@ -80,7 +85,7 @@ export default function AutomodV2View() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
 
-  const { data, isLoading } = useQuery<AutomodData>({
+  const { data, isLoading, error: automodError } = useQuery<AutomodData>({
     queryKey: ["automod-v2", guildId],
     queryFn: () => get(guildPath("/api/automod", guildId)),
     enabled: !!guildId,
@@ -113,7 +118,8 @@ export default function AutomodV2View() {
   useEffect(() => { if (data) setDraft({}); }, [data]);
 
   if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a guild first.</div>;
-  if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading automod v2...</div>;
+  if (automodError) return <ErrorRetry message="Failed to load automod v2 configuration" onRetry={() => window.location.reload()} />;
+  if (isLoading || !data) return <LoadingFallback text="Loading automod v2..." />;
 
   // ── Patch helpers ────────────────────────────────────────────────────────
   const setBase = (patch: Partial<UnifiedConfig>) => setDraft(d => ({ ...d, base: { ...(d.base || {}), ...patch } }));
@@ -387,6 +393,11 @@ export default function AutomodV2View() {
             <div className="py-8 text-center text-sm text-muted-foreground">No automod triggers recorded yet.</div>
           ) : (
             <div className="overflow-x-auto">
+              {(statsData.stats.length > 50) && (
+                <div className="px-4 py-2 text-xs text-muted-foreground bg-background-alt/30 border-b border-border/20">
+                  Showing most recent 50 trigger records ({statsData.stats.length.toLocaleString()} total)
+                </div>
+              )}
               <table className="w-full text-xs">
                 <thead><tr className="border-b border-border/30">
                   <th className="text-left py-2 px-4 text-muted-foreground font-medium">Rule</th>

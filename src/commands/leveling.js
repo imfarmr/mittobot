@@ -6,11 +6,12 @@
 // $resetlevels                — owner: wipe the guild's leveling data (confirm)
 // Category: "leveling" (feature toggle via levelingEnabled).
 
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js");
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags, AttachmentBuilder } = require("discord.js");
 const { successEmbed, errorEmbed, OWNER_IDS } = require("../utils");
 const leveling = require("../leveling");
 const ui = require("../ui");
 const safe = require("../safe");
+const { generateRankCard } = require("../canvas/rankCard");
 
 const CATEGORY = "leveling";
 const BLURPLE = 0x5865f2;
@@ -26,26 +27,17 @@ function progressBar(current, needed) {
 // ─── Rank card ──────────────────────────────────────────────────────────────
 async function cmdRank(guild, userId, requesterId) {
   if (!leveling.getConfig(guild.id).enabled) {
-    return errorEmbed("Leveling is disabled in this server.");
+    return { embeds: [errorEmbed("Leveling is disabled in this server.")] };
   }
   const data = leveling.getRankCardData(guild.id, userId);
   if (!data) {
-    return errorEmbed("That user hasn't earned any XP yet.");
+    return { embeds: [errorEmbed("That user hasn't earned any XP yet.")] };
   }
   const member = guild.members.cache.get(userId);
-  const name = member?.displayName || member?.user?.username || userId;
-  const bar = progressBar(data.currentXp, data.neededXp);
-  return new EmbedBuilder()
-    .setColor(BLURPLE)
-    .setAuthor({ name: `Rank card — ${name}`, iconURL: member?.user?.displayAvatarURL?.() })
-    .addFields(
-      { name: "Level", value: `**${data.level}**`, inline: true },
-      { name: "Rank", value: `#${data.rank || "—"}`, inline: true },
-      { name: "Messages", value: String(data.messages), inline: true },
-      { name: "XP Progress", value: `${bar}\n**${data.currentXp}** / ${data.neededXp} XP (total ${data.xp.toLocaleString()})` },
-      ...(data.voiceMinutes > 0 ? [{ name: "Voice time", value: `${data.voiceMinutes} min`, inline: true }] : []),
-    )
-    .setFooter({ text: requesterId === userId ? "Your rank" : `Viewing ${name}'s rank` });
+  const targetUser = member?.user || { username: userId, displayAvatarURL: () => null };
+  const buffer = await generateRankCard(targetUser, data);
+  const attachment = new AttachmentBuilder(buffer, { name: "rank.png" });
+  return { files: [attachment] };
 }
 
 // ─── Leaderboard (paginated) ────────────────────────────────────────────────
@@ -107,13 +99,13 @@ module.exports = [
     category: CATEGORY,
     prefix: async (m, a) => {
       const target = m.mentions.users.first() || m.author;
-      m.reply({ embeds: [await cmdRank(m.guild, target.id, m.author.id)], allowedMentions: { parse: [] } });
+      m.reply({ ...(await cmdRank(m.guild, target.id, m.author.id)), allowedMentions: { parse: [] } });
     },
     slash: new SlashCommandBuilder().setName("rank").setDescription("Show your leveling rank card")
       .addUserOption(o => o.setName("user").setDescription("Whose rank to view (defaults to you)").setRequired(false)),
     execute: async (i) => {
       const target = i.options.getUser("user") || i.user;
-      i.reply({ embeds: [await cmdRank(i.guild, target.id, i.user.id)], allowedMentions: { parse: [] } });
+      i.reply({ ...(await cmdRank(i.guild, target.id, i.user.id)), allowedMentions: { parse: [] } });
     },
   },
   {

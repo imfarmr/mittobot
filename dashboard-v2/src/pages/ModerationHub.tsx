@@ -7,6 +7,7 @@ import ModLogView from "@/pages/views/moderation/ModLogView";
 import UserNotesView from "@/pages/views/moderation/UserNotesView";
 import AutoRulesView from "@/pages/views/moderation/AutoRulesView";
 import CasesView from "@/pages/views/moderation/CasesView";
+import LoggingView from "@/pages/views/moderation/LoggingView";
 
 export default function ModerationHub() {
   return (
@@ -19,6 +20,7 @@ export default function ModerationHub() {
         <Route path="dangerzone" element={<DangerZoneView />} />
         <Route path="cases" element={<CasesView />} />
         <Route path="modlog" element={<ModLogView />} />
+        <Route path="logging" element={<LoggingView />} />
         <Route path="notes" element={<UserNotesView />} />
         <Route path="rules" element={<AutoRulesView />} />
       </Routes>

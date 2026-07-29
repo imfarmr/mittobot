@@ -30,6 +30,7 @@ const giveaways = require("./src/giveaways");
 const suggestions = require("./src/suggestions");
 const invites = require("./src/invites");
 const social = require("./src/social");
+const logging = require("./src/logging");
 
 const commandMap = new Map();
 const slashMap = new Map();
@@ -224,6 +225,10 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     // Required for invite tracking — receive inviteCreate/Delete + fetch invite uses.
     GatewayIntentBits.GuildInvites,
+    // Required for ban/unban logging.
+    GatewayIntentBits.GuildBans,
+    // Required for emoji create/delete/update logging.
+    GatewayIntentBits.GuildEmojisAndStickers,
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
@@ -546,6 +551,7 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   if (voiceManager) {
     voiceManager.handleVoiceStateUpdate(oldState, newState);
   }
+  logging.onVoiceStateUpdate(oldState, newState).catch(err => console.error("[logging] voiceStateUpdate:", err.message));
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
@@ -584,6 +590,7 @@ client.on("guildMemberAdd", member => {
   // too-new account is stopped before it gets roles or a welcome message.
   antiraid.onMemberAdd(member).catch(err => console.error("antiraid add:", err.message));
   greet.onMemberAdd(member).catch(err => console.error("greet add:", err.message));
+  logging.onMemberJoin(member).catch(err => console.error("logging memberJoin:", err.message));
   roles.onMemberAdd(member).catch(err => console.error("autorole:", err.message));
   // Auto-exec: fire any rules triggered by the "join" event
   autoexec.executeTrigger(member.guild.id, "join", {
@@ -596,6 +603,7 @@ client.on("guildMemberAdd", member => {
 });
 client.on("guildMemberRemove", member => {
   greet.onMemberRemove(member).catch(err => console.error("greet remove:", err.message));
+  logging.onMemberLeave(member).catch(err => console.error("logging memberLeave:", err.message));
   // Auto-exec: fire any rules triggered by the "leave" event
   autoexec.executeTrigger(member.guild.id, "leave", {
     guild: member.guild,
@@ -610,16 +618,24 @@ client.on("messageDelete", message => {
   } catch (err) {
     console.error("[safe] rememberDeletedMessage:", err.message);
   }
-  greet.onMessageDelete(message).catch(err => console.error("[safe] greet.onMessageDelete:", err.message));
+  logging.onMessageDelete(message).catch(err => console.error("[safe] logging.onMessageDelete:", err.message));
 });
-client.on("messageUpdate",     (oldMsg, newMsg) => greet.onMessageUpdate(oldMsg, newMsg).catch(err => console.error("[safe] greet.onMessageUpdate:", err.message)));
+client.on("messageBulkDelete", messages => {
+  const channel = messages.first()?.channel;
+  if (channel) logging.onMessageBulkDelete([...messages.values()], channel).catch(err => console.error("[safe] logging.onMessageBulkDelete:", err.message));
+});
+client.on("messageUpdate",     (oldMsg, newMsg) => {
+  logging.onMessageUpdate(oldMsg, newMsg).catch(err => console.error("[safe] logging.onMessageUpdate:", err.message));
+});
 
 // Keep the invite-uses cache in sync so join attribution stays accurate.
 client.on("inviteCreate", invite => {
   invites.onInviteCreate(invite);
+  logging.onInviteCreate(invite).catch(err => console.error("[logging] inviteCreate:", err.message));
 });
 client.on("inviteDelete", invite => {
   invites.onInviteDelete(invite);
+  logging.onInviteDelete(invite).catch(err => console.error("[logging] inviteDelete:", err.message));
 });
 
 // Live role tracker and nickname lock
@@ -634,6 +650,48 @@ client.on("guildMemberUpdate", (oldMember, newMember) => {
   } catch (err) {
     console.error("[femboyify] guildMemberUpdate error:", err.message);
   }
+  logging.onMemberUpdate(oldMember, newMember).catch(err => console.error("[logging] memberUpdate:", err.message));
+});
+
+// Ban / unban events (requires GuildBans intent)
+client.on("guildBanAdd", ban => {
+  logging.onMemberBan(ban).catch(err => console.error("[logging] guildBanAdd:", err.message));
+});
+client.on("guildBanRemove", ban => {
+  logging.onMemberUnban(ban).catch(err => console.error("[logging] guildBanRemove:", err.message));
+});
+
+// Channel events
+client.on("channelCreate", channel => {
+  if (channel.guild) logging.onChannelCreate(channel).catch(err => console.error("[logging] channelCreate:", err.message));
+});
+client.on("channelDelete", channel => {
+  if (channel.guild) logging.onChannelDelete(channel).catch(err => console.error("[logging] channelDelete:", err.message));
+});
+client.on("channelUpdate", (oldChannel, newChannel) => {
+  if (newChannel.guild) logging.onChannelUpdate(oldChannel, newChannel).catch(err => console.error("[logging] channelUpdate:", err.message));
+});
+
+// Role events
+client.on("roleCreate", role => {
+  if (role.guild) logging.onRoleCreate(role).catch(err => console.error("[logging] roleCreate:", err.message));
+});
+client.on("roleDelete", role => {
+  if (role.guild) logging.onRoleDelete(role).catch(err => console.error("[logging] roleDelete:", err.message));
+});
+client.on("roleUpdate", (oldRole, newRole) => {
+  if (newRole.guild) logging.onRoleUpdate(oldRole, newRole).catch(err => console.error("[logging] roleUpdate:", err.message));
+});
+
+// Emoji events (requires GuildEmojisAndStickers intent)
+client.on("guildEmojiCreate", emoji => {
+  if (emoji.guild) logging.onEmojiCreate(emoji).catch(err => console.error("[logging] emojiCreate:", err.message));
+});
+client.on("guildEmojiDelete", emoji => {
+  if (emoji.guild) logging.onEmojiDelete(emoji).catch(err => console.error("[logging] emojiDelete:", err.message));
+});
+client.on("guildEmojiUpdate", (oldEmoji, newEmoji) => {
+  if (newEmoji.guild) logging.onEmojiUpdate(oldEmoji, newEmoji).catch(err => console.error("[logging] emojiUpdate:", err.message));
 });
 
 client.once("ready", async () => {
@@ -729,6 +787,7 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
       birthdays.load(),
       tickets.load(),
       suggestions.load(),
+      logging.load(),
     ]);
     // Load scheduled messages after settings are ready
     await scheduler.load(client).catch(err => console.error("[scheduler] Load error:", err.message));
