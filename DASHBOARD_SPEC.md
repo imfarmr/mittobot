@@ -50,9 +50,9 @@ Missing: `src/main.tsx`, router, shell, all pages — that is what this spec def
   bot's public URL — must be HTTPS; Caddy/nginx in front of `PORT`).
 - **Bot side** (`.env` on Pterodactyl): `DASHBOARD_ORIGIN=https://<app>.vercel.app`
   (CORS allowlist) and, for OAuth, `DISCORD_REDIRECT_URI=https://bot.yourdomain.com/api/auth/discord/callback`.
-- The bot **also** serves whichever `dist/` exists locally (single-port Pterodactyl
-  mode) — Vercel is the premium path, local serving is the fallback. Cutover:
-  `src/api/server.js` prefers `dashboard-v2/dist` over `dashboard/dist` when present.
+- The bot **also** serves `dashboard-v2/dist` locally (single-port Pterodactyl
+  mode) — Vercel is the premium path. The legacy `dashboard/` application is
+  deprecated and is no longer part of the serving or build path.
 - Auth flow (already implemented in scaffold): password → `POST /login` → JWT;
   Discord OAuth → redirect → callback → `{dashOrigin}#token=<jwt>` → hash consumed,
   stored under `ggboi_token` (v1-compatible: existing sessions carry over).

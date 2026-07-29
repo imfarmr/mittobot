@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "@/lib/api";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -91,9 +91,7 @@ export default function CommandsPage() {
 
   const prefix = data.prefix || "$";
   const permLabels = data.permLabels || {};
-  const categories = useMemo(() => {
-    return [...new Set(data.commands.map(c => c.category || "uncategorized").filter(Boolean))];
-  }, [data]);
+  const categories = [...new Set(data.commands.map(c => c.category || "uncategorized").filter(Boolean))];
 
   const filtered = data.commands.filter(c => {
     if (search && !c.name.toLowerCase().includes(search.toLowerCase()) && !c.description.toLowerCase().includes(search.toLowerCase()) && !(c.aliases || []).some(a => a.includes(search.toLowerCase()))) return false;

@@ -106,6 +106,17 @@ export default function AutomodV2View() {
     onError: (e: any) => toast.error(e.message || "Clear failed"),
   });
 
+  // These hooks must run before the loading guard below. Otherwise React sees
+  // a different hook order once the API response arrives and crashes the page.
+  const [testInput, setTestInput] = useState("");
+  const [testMentions, setTestMentions] = useState(0);
+  const [testResult, setTestResult] = useState<{ hits: { rule: string; action: string }[]; enabled: boolean; notes: string[] } | null>(null);
+  const testMutation = useMutation({
+    mutationFn: (body: { content: string; mentionCount: number }) => post(guildPath("/api/automod/test", guildId), body),
+    onSuccess: (r: any) => setTestResult(r),
+    onError: (e: any) => { setTestResult(null); toast.error(e.message || "Test failed"); },
+  });
+
   const cfg = data?.config;
   const base = { ...cfg, ...draft.base } as UnifiedConfig;
   const ext = { ...(cfg?.extended || {} as ExtendedConfig), ...draft.extended } as ExtendedConfig;
@@ -138,16 +149,6 @@ export default function AutomodV2View() {
     }
     saveMutation.mutate(payload);
   };
-
-  // ── Test mode ────────────────────────────────────────────────────────────
-  const [testInput, setTestInput] = useState("");
-  const [testMentions, setTestMentions] = useState(0);
-  const [testResult, setTestResult] = useState<{ hits: { rule: string; action: string }[]; enabled: boolean; notes: string[] } | null>(null);
-  const testMutation = useMutation({
-    mutationFn: (body: { content: string; mentionCount: number }) => post(guildPath("/api/automod/test", guildId), body),
-    onSuccess: (r: any) => setTestResult(r),
-    onError: (e: any) => { setTestResult(null); toast.error(e.message || "Test failed"); },
-  });
 
   return (
     <div className="space-y-4">

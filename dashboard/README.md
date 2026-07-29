@@ -1,4 +1,7 @@
-# ggboi dashboard
+# Deprecated: ggboi dashboard (v1)
+
+> This dashboard is deprecated and no longer built, served, or supported.
+> Use [`dashboard-v2/`](../dashboard-v2/) instead.
 
 Standalone **Vite + React** web dashboard for the ggboi Discord bot. It is a pure
 client of the bot's public HTTP API — it imports no bot code and touches no

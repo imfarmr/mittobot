@@ -129,9 +129,8 @@ function startApi(ctx) {
   const app = express();
   app.set('trust proxy', 1);
 
-  // Check if the dashboard is built and can be served locally (same-origin).
-  // This is checked early so we can relax the DASHBOARD_ORIGIN requirement:
-  // same-origin requests don't need CORS at all.
+  // The TypeScript dashboard-v2 build is the only supported local UI.
+  // This is checked early so same-origin requests can skip CORS configuration.
   const dashboardPath = path.resolve(__dirname, "../../dashboard-v2/dist");
   const servingDashboard = fs.existsSync(dashboardPath);
 
@@ -2989,7 +2988,7 @@ function startApi(ctx) {
       res.sendFile(path.join(dashboardPath, "index.html"));
     });
   } else {
-    console.warn(`[api] Dashboard build not found at ${dashboardPath} — dashboard UI will not be served. Run: cd dashboard && npm run build`);
+    console.warn(`[api] dashboard-v2 build not found at ${dashboardPath} — dashboard UI will not be served. Run: npm run build:dashboard`);
   }
 
   // Global error handler (catch-all for thrown errors in routes)

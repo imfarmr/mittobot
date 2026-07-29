@@ -29,16 +29,9 @@ The bot runs as **one Node.js process on one port** — API + dashboard fallback
 `3432`** (no Vercel split for now — Vercel remains an optional later path, see
 DASHBOARD_SPEC §1).
 
-- `src/api/server.js` serves the dashboard build as static files on the same Express
-  app as the API. Path resolution order:
-  ```js
-  // Prefer the v2 build; fall back to legacy v1; warn if neither exists.
-  const candidates = [
-    path.resolve(__dirname, "../../dashboard-v2/dist"),   // ★ default
-    path.resolve(__dirname, "../../dashboard/dist"),      // legacy fallback
-  ];
-  const dashboardPath = candidates.find(p => fs.existsSync(p));
-  ```
+- `src/api/server.js` serves the `dashboard-v2` build as static files on the same
+  Express app as the API. The old `dashboard/` application is deprecated and is
+  not served by the bot.
 - SPA fallback stays as-is: `GET *` → `index.html` (excluding `/api/*` and `/login`).
 - Build step: `npm run build` at repo root builds `dashboard-v2` (update the root
   `package.json` script: `"build:dashboard": "cd dashboard-v2 && npm ci && npm run build"`).

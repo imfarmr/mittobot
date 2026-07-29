@@ -16,8 +16,8 @@
 ### Steps
 
 ```bash
-# 1. Navigate to the dashboard directory
-cd dashboard
+# 1. Navigate to the dashboard-v2 directory
+cd dashboard-v2
 
 # 2. Install dependencies
 npm install
@@ -41,7 +41,7 @@ Set these in the Vercel dashboard (Project > Settings > Environment Variables):
 
 ### Vercel Configuration
 
-`dashboard/vercel.json` is already set up with SPA rewrites:
+`dashboard-v2/vercel.json` is already set up with SPA rewrites:
 ```json
 {
   "rewrites": [{ "source": "/(.*)", "destination": "/" }]
@@ -251,7 +251,7 @@ DASHBOARD_TOKEN_TTL=7d
 
 ### Dashboard (Vercel)
 ```bash
-cd dashboard
+cd dashboard-v2
 npm run build
 npx vercel --prod
 ```
