@@ -132,7 +132,7 @@ function startApi(ctx) {
   // The TypeScript dashboard-v2 build is the only supported local UI.
   // This is checked early so same-origin requests can skip CORS configuration.
   const dashboardPath = path.resolve(__dirname, "../../dashboard-v2/dist");
-  const servingDashboard = fs.existsSync(dashboardPath);
+  const servingDashboard = process.env.SERVE_DASHBOARD !== "false" && fs.existsSync(dashboardPath);
 
   // CORS: restrict to the dashboard origin(s). DASHBOARD_ORIGIN may be a
   // comma-separated list; required in production when the dashboard is NOT
@@ -306,6 +306,40 @@ function startApi(ctx) {
     return req.query?.guildId || req.body?.guildId || null;
   }
 
+  function dashboardAuditAction(req) {
+    if (req.path === "/api/features") {
+      return `${req.body?.enabled ? "Enabled" : "Disabled"} feature: ${req.body?.id || "unknown"}`;
+    }
+    if (req.path.startsWith("/api/commands/")) {
+      return `Updated command: ${decodeURIComponent(req.path.slice("/api/commands/".length))}`;
+    }
+    if (req.path === "/api/automod") return "Updated automod settings";
+    if (req.path.startsWith("/api/automod/")) return "Updated automod controls";
+    if (req.path.startsWith("/api/greet")) return "Updated greeting settings";
+    if (req.path.startsWith("/api/roles")) return "Updated role settings";
+    if (req.path.startsWith("/api/settings")) return "Updated bot settings";
+    if (req.path.startsWith("/api/ai")) return "Updated AI settings";
+    return `${req.method} ${req.path}`;
+  }
+
+  // Record successful dashboard mutations without storing request bodies, which
+  // may contain secrets or message content. Login is recorded in its own route.
+  app.use((req, res, next) => {
+    res.on("finish", () => {
+      if (!req.user || res.statusCode >= 400 || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return;
+      if (!req.path.startsWith("/api/") || req.path === "/api/dashboard-audit") return;
+      const db = require("../db");
+      db.addDashboardAudit({
+        guildId: reqGuildId(req),
+        actorId: String(req.user.sub || "unknown"),
+        actorTag: String(req.user.tag || "Unknown user"),
+        action: dashboardAuditAction(req),
+        target: req.path,
+      }).catch(err => console.error("[api] dashboard audit persist:", err.message));
+    });
+    next();
+  });
+
   // List of guilds with summary info. When userId is provided, only returns guilds
   // the user has access to (Admin/ManageGuild). Bot owners see all guilds.
   function listGuilds(userId, isOwner) {
@@ -446,6 +480,12 @@ function startApi(ctx) {
     }
     // Password users get full access (isOwner=true) since they share the single password
     const token = jwt.sign({ sub: "password-session", tag: "Admin (Password)", avatar: null, isOwner: true }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+    require("../db").addDashboardAudit({
+      actorId: "password-session",
+      actorTag: "Admin (Password)",
+      action: "Logged in with dashboard password",
+      target: "Authentication",
+    }).catch(err => console.error("[api] dashboard audit persist:", err.message));
     res.json({ ok: true, token });
   });
 
@@ -1126,6 +1166,20 @@ function startApi(ctx) {
   });
 
   // ─── Feature categories ──────────────────────────────────────────────────
+  app.get("/api/dashboard-audit", requireAuth, async (req, res) => {
+    const guildId = reqGuildId(req);
+    if (guildId && !userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    try {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+      const entries = await require("../db").getDashboardAudit(guildId, limit);
+      res.json({ entries });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/features", requireAuth, (req, res) => {
     const cats = features.listCategories().map(cat => {
       const commands = [...ctx.commandMap.values()]
@@ -2988,7 +3042,11 @@ function startApi(ctx) {
       res.sendFile(path.join(dashboardPath, "index.html"));
     });
   } else {
-    console.warn(`[api] dashboard-v2 build not found at ${dashboardPath} — dashboard UI will not be served. Run: npm run build:dashboard`);
+    if (process.env.SERVE_DASHBOARD === "false") {
+      console.log("[api] Dashboard serving disabled (SERVE_DASHBOARD=false); use the Vite dev server for the live UI.");
+    } else {
+      console.warn(`[api] dashboard-v2 build not found at ${dashboardPath} — dashboard UI will not be served. Run: npm run build:dashboard`);
+    }
   }
 
   // Global error handler (catch-all for thrown errors in routes)

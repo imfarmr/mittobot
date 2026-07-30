@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // ─── Full local dev stack launcher ───────────────────────────────────────────
 // One command to run everything you need locally:
-//   1. Bot + API  (node index.js — serves API + dashboard on :3432)
-//   2. Dashboard  (Vite dev server in dashboard/ on :5173)
+//   1. Bot + API  (node index.js — API on :3432)
+//   2. Dashboard  (Vite dev server in dashboard-v2/ with HMR)
 //
 // Usage:
 //   npm start                 # bot + dashboard
-//   node scripts/dev.js --no-dashboard   # bot only
+//   npm run dev:bot                     # bot + API only
+//   npm run dev:dashboard               # dashboard with live HMR
+//   node scripts/dev.js --no-dashboard  # bot only (full-stack launcher)
 //
 // No extra dependencies — uses Node's child_process and the dotenv already
 // installed for the bot. SQLite database file is created automatically.
@@ -80,7 +82,7 @@ function startDashboard() {
   // The Vite proxy (in dashboard-v2/vite.config.ts) forwards /api/* and /login
   // to the bot API. The SPA fetches same-origin via the proxy — no env var needed.
   const env = {};
-  log("dash", `Starting dashboard on http://0.0.0.0:${DASHBOARD_PORT} (API proxied → http://0.0.0.0:${API_PORT})...`);
+  log("dash", `Starting dashboard on http://localhost:${DASHBOARD_PORT} (API proxied → http://127.0.0.1:${API_PORT})...`);
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   spawnService("dash", npm, ["--prefix", "dashboard-v2", "run", "dev", "--", "--port", String(DASHBOARD_PORT), "--host", "0.0.0.0"], env);
 }

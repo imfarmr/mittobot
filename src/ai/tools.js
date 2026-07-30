@@ -3,6 +3,7 @@ const safe = require("../safe");
 const aiMemory = require("./memory");
 const settings = require("../settings");
 const { OWNER_IDS, validation } = require("../utils");
+const { SAFE_ALLOWED_MENTIONS, sanitizeAiOutput } = require("./sanitize-output");
 
 // Resolve tool permissions from settings. Returns "all" | "mod" | "admin" | "owner".
 function getToolPermission(toolName) {
@@ -698,7 +699,7 @@ async function executeTool(name, args, ctx, message) {
         if (!channel || channel.type !== 0) return `Error: channel ${args.channelId} is not a valid text channel.`;
         const perms = channel.permissionsFor(guild.members.me);
         if (!perms?.has(PermissionFlagsBits.SendMessages)) return `Error: bot lacks permission to send messages in channel ${args.channelId}.`;
-        await channel.send(sanitizedContent);
+        await channel.send({ content: sanitizeAiOutput(sanitizedContent), allowedMentions: SAFE_ALLOWED_MENTIONS });
         return `Successfully sent message to #${channel.name}.`;
       }
 
@@ -1144,7 +1145,7 @@ async function executeTool(name, args, ctx, message) {
       if (!editMsg) return "Error: message not found.";
       if (editMsg.author.id !== client.user.id) return "Error: can only edit messages sent by the bot.";
       try {
-        await editMsg.edit({ content: sanitizedContent });
+        await editMsg.edit({ content: sanitizeAiOutput(sanitizedContent), allowedMentions: SAFE_ALLOWED_MENTIONS });
         return `Edited message ${args.messageId} in #${editCh.name}.`;
       } catch (err) {
         return `Error: failed to edit message — ${err.message}`;

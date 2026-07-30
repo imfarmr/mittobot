@@ -3,7 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
-const API_TARGET = process.env.VITE_BOT_API_URL || "http://0.0.0.0:3432";
+// 0.0.0.0 is a bind address, not a reliable client destination. Use loopback
+// for the local bot; set VITE_BOT_API_URL for a remote API.
+const API_TARGET = process.env.VITE_BOT_API_URL || "http://127.0.0.1:3432";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

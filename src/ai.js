@@ -4,6 +4,7 @@ const groqProvider = require("./ai/providers/groq");
 const { processMessageImages, buildContentParts } = require("./ai/images");
 const { getPersonality, DEFAULT_PERSONALITY } = require("./ai/personalities");
 const { extractMemoriesAsync } = require("./ai/memory-extractor");
+const { SAFE_ALLOWED_MENTIONS, sanitizeAiOutput } = require("./ai/sanitize-output");
 const db = require("./db");
 
 const safe = require("./safe");
@@ -811,16 +812,16 @@ async function handleAiMessage(message, ctx) {
     }
 
     // Final sanitisation pass — strip any tool-call JSON that leaked through
-    finalReply = cleanResponse(finalReply, thinkingEnabled);
+    finalReply = sanitizeAiOutput(cleanResponse(finalReply, thinkingEnabled));
 
     const chunks = splitResponse(finalReply);
     for (let i = 0; i < chunks.length; i++) {
       if (i === 0) {
-        await message.reply(chunks[i]);
+        await message.reply({ content: chunks[i], allowedMentions: SAFE_ALLOWED_MENTIONS });
       } else {
         // Natural delay between multi-message responses (300-800ms)
         await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
-        await message.channel.send(chunks[i]);
+        await message.channel.send({ content: chunks[i], allowedMentions: SAFE_ALLOWED_MENTIONS });
       }
     }
 
@@ -884,7 +885,7 @@ async function handleAiMessage(message, ctx) {
     } catch { /* analytics push should never crash the bot */ }
     // Reply with error, but don't throw — prevent unhandled rejection crashing the process
     try {
-      await safe.reply(message, { content: `❌ AI error: ${err.message}` }, "AI error reply");
+      await safe.reply(message, { content: sanitizeAiOutput(`❌ AI error: ${err.message}`), allowedMentions: SAFE_ALLOWED_MENTIONS }, "AI error reply");
     } catch { /* best-effort — if replying fails, just log */ }
     return true;
   }

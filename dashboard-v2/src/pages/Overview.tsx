@@ -1,55 +1,28 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Zap, Users, Hash, Activity, Cpu, MemoryStick, Timer, Gauge } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Zap, Users, Hash, Activity, Cpu, MemoryStick, Timer, Gauge, History } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Switch } from "@/components/ui/switch";
 import { useGuild, useBotStatus, useGuildMeta } from "@/hooks/useGuild";
-import { get, post } from "@/lib/api";
-import { formatUptime } from "@/lib/utils";
+import { get, guildPath } from "@/lib/api";
+import { formatUptime, timeAgo } from "@/lib/utils";
 
-interface Feature {
-  id: string;
-  label: string;
-  description: string;
-  enabled: boolean;
-  commands: string[];
+interface DashboardAuditEntry {
+  id: number;
+  actor_tag: string;
+  action: string;
+  created_at: number;
 }
 
 export default function Overview() {
   const { guildId, guild } = useGuild();
-  const queryClient = useQueryClient();
   const { data: status } = useBotStatus();
   const { data: meta } = useGuildMeta(guildId);
 
-  // Fetch Features
-  const { data: featureData, isLoading: loadingFeatures } = useQuery<{ features: Feature[]; prefix: string }>({
-    queryKey: ["guild", guildId, "features"],
-    queryFn: () => get("/api/features"),
-  });
-
-  // Toggle Feature Mutation (optimistic, with rollback)
-  const toggleFeature = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      post("/api/features", { id, enabled }),
-    onMutate: async ({ id, enabled }) => {
-      await queryClient.cancelQueries({ queryKey: ["guild", guildId, "features"] });
-      const previous = queryClient.getQueryData<{ features: Feature[]; prefix: string }>(["guild", guildId, "features"]);
-      if (previous) {
-        queryClient.setQueryData(["guild", guildId, "features"], {
-          ...previous,
-          features: previous.features.map((f) => (f.id === id ? { ...f, enabled } : f)),
-        });
-      }
-      return { previous };
-    },
-    onError: (_err, _variables, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(["guild", guildId, "features"], context.previous);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["guild", guildId, "features"] });
-    },
+  const { data: auditData, isLoading: loadingAudit } = useQuery<{ entries: DashboardAuditEntry[] }>({
+    queryKey: ["guild", guildId, "dashboard-audit"],
+    queryFn: () => get(guildPath("/api/dashboard-audit?limit=50", guildId)),
+    enabled: !!guildId,
+    refetchInterval: 10_000,
   });
 
   // Live system telemetry from GET /api/status (polled by useBotStatus).
@@ -64,11 +37,11 @@ export default function Overview() {
   const cpuLoad = status?.cpuLoad;
 
   const telemetry: { label: string; value: string; sub?: string; icon: typeof Zap }[] = [
-    { label: "Shard Latency", value: status?.ping != null ? `${status.ping}ms` : "—", sub: "Gateway heartbeat", icon: Zap },
+    { label: "Server latency", value: status?.ping != null ? `${status.ping}ms` : "—", sub: "Gateway heartbeat", icon: Zap },
     { label: "Process Uptime", value: status?.uptimeMs != null ? formatUptime(status.uptimeMs) : "—", sub: status?.processUptimeSec != null ? `${status.processUptimeSec}s` : undefined, icon: Timer },
-    { label: "Memory", value: memUsed != null ? `${memUsed} / ${memTotal ?? "?"} MB` : "—", sub: memPct != null ? `${memPct}% used` : undefined, icon: MemoryStick },
-    { label: "Commands / min", value: status?.commandsPerMin != null ? String(status.commandsPerMin) : "—", sub: "rolling 60s", icon: Gauge },
-    { label: "Active AI Convos", value: status?.activeAiConversations != null ? String(status.activeAiConversations) : "—", sub: "last 10 min", icon: Activity },
+    { label: "RAM", value: memUsed != null ? `${memUsed} / ${memTotal ?? "?"} MB` : "—", sub: memPct != null ? `${memPct}% used` : undefined, icon: MemoryStick },
+    { label: "commands per min", value: status?.commandsPerMin != null ? String(status.commandsPerMin) : "—", sub: "rolling 60s", icon: Gauge },
+    { label: "active ai chats", value: status?.activeAiConversations != null ? String(status.activeAiConversations) : "—", sub: "last 10 min", icon: Activity },
     { label: "CPU Load", value: cpuLoad ? cpuLoad.load1.toFixed(2) : "—", sub: cpuLoad ? `${cpuLoad.cpuCount} cores · 1m avg` : undefined, icon: Cpu },
   ];
 
@@ -77,8 +50,8 @@ export default function Overview() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Mission Control</h1>
-          <p className="text-sm text-muted-foreground">Guild Overview for {guild?.name || "Server"}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Overview</h1>
+          <p className="text-sm text-muted-foreground">{guild?.name || "Server"}</p>
         </div>
         {status?.tag && (
           <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
@@ -143,14 +116,10 @@ export default function Overview() {
           <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-border/20">
             <div className="space-y-0.5">
               <CardTitle className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">
-                System Telemetry
+                Bot Status
               </CardTitle>
-              <CardDescription className="text-xs">Live metrics from the bot process</CardDescription>
+              <CardDescription className="text-xs">real-time bot api status</CardDescription>
             </div>
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-success/10 text-success border border-success/20">
-              <span className="size-1.5 rounded-full bg-success animate-pulse" />
-              LIVE
-            </span>
           </CardHeader>
           <CardContent className="p-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -173,45 +142,37 @@ export default function Overview() {
           </CardContent>
         </Card>
 
-        {/* Right Side: Quick Features Rail */}
+        {/* Right Side: dashboard audit feed */}
         <Card className="border-border/40 bg-card/40 flex flex-col h-[400px]">
           <CardHeader className="pb-4 border-b border-border/20 shrink-0">
-            <CardTitle className="text-sm font-semibold tracking-wider uppercase text-muted-foreground">
-              Quick settings
+            <CardTitle className="text-sm font-semibold tracking-wider uppercase text-muted-foreground flex items-center gap-2">
+              <History className="size-4 text-primary" /> Dashboard activity
             </CardTitle>
-            <CardDescription className="text-xs">Toggle command categories</CardDescription>
+            <CardDescription className="text-xs">Refreshes every 10 seconds</CardDescription>
           </CardHeader>
           <ScrollArea className="flex-1 p-4">
-            {loadingFeatures ? (
+            {loadingAudit ? (
               <div className="space-y-4">
                 {[1, 2, 3].map((n) => (
-                  <div key={n} className="flex items-center justify-between py-2">
+                  <div key={n} className="space-y-2 py-2">
                     <div className="space-y-1">
-                      <div className="h-4 w-28 bg-muted animate-pulse rounded" />
                       <div className="h-3 w-40 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-28 bg-muted animate-pulse rounded" />
                     </div>
-                    <div className="h-6 w-10 bg-muted animate-pulse rounded" />
                   </div>
                 ))}
               </div>
+            ) : !auditData?.entries.length ? (
+              <p className="py-10 text-center text-xs text-muted-foreground">No dashboard activity recorded yet.</p>
             ) : (
-              <div className="space-y-5">
-                {featureData?.features.map((feat) => (
-                  <div key={feat.id} className="flex items-start justify-between gap-4">
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-sm font-semibold text-foreground truncate block">
-                        {feat.label}
-                      </span>
-                      <p className="text-xs text-muted-foreground leading-normal">
-                        {feat.description}
-                      </p>
+              <div className="space-y-3">
+                {auditData.entries.map((entry) => (
+                  <div key={entry.id} className="border-l-2 border-primary/50 pl-3 py-0.5">
+                    <p className="text-xs text-foreground leading-snug">{entry.action}</p>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-mono text-muted-foreground">
+                      <span className="truncate">{entry.actor_tag}</span>
+                      <span className="shrink-0">{timeAgo(entry.created_at)}</span>
                     </div>
-                    <Switch
-                      checked={feat.enabled}
-                      onCheckedChange={(checked) =>
-                        toggleFeature.mutate({ id: feat.id, enabled: checked })
-                      }
-                    />
                   </div>
                 ))}
               </div>

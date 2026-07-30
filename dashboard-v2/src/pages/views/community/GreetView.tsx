@@ -155,7 +155,7 @@ export default function GreetView() {
 
       <Card className="border-border/40 bg-card/40">
         <CardHeader className="flex flex-row items-center justify-between">
-          <div><CardTitle className="text-sm font-semibold">Audit Logs</CardTitle><CardDescription className="text-xs">Member and message event logging</CardDescription></div>
+          <div><CardTitle className="text-sm font-semibold">Audit Logs</CardTitle><CardDescription className="text-xs">Server, member, and message event logging</CardDescription></div>
           <Switch checked={logsEnabled} onCheckedChange={setLogsEnabled} />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -167,7 +167,7 @@ export default function GreetView() {
           </div>
           <div className="flex items-center gap-6 pt-2">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={memberEvents} onCheckedChange={setMemberEvents} /> Member Events (join/leave)
+              <Switch checked={memberEvents} onCheckedChange={setMemberEvents} /> Server & Member Events
             </label>
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <Switch checked={messageEvents} onCheckedChange={setMessageEvents} /> Message Events (edit/delete)

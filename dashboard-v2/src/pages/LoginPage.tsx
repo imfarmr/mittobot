@@ -4,7 +4,7 @@ import { Disc, KeyRound, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { BASE, api } from "@/lib/api";
 
@@ -66,8 +66,6 @@ export default function LoginPage() {
         </Button>
 
         <CardHeader className="text-center pt-12">
-          <CardTitle className="text-2xl font-bold tracking-tight">Mitto</CardTitle>
-          <CardDescription>Dashboard</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
@@ -86,9 +84,6 @@ export default function LoginPage() {
                   Login with Discord
                 </Button>
               </a>
-              <p className="text-xs text-center text-muted-foreground">
-                Access your Mitto dashboard.
-              </p>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border/40" />

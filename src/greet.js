@@ -102,7 +102,18 @@ function format(template, member, guild) {
 function sendTo(guild, channelId, embed) {
   if (!channelId) return;
   const ch = guild.channels.cache.get(channelId);
-  if (ch) safe.send(ch, { embeds: [embed] }, "greet");
+  if (ch) safe.send(ch, { embeds: [embed], allowedMentions: { parse: [] } }, "greet");
+}
+
+function logEvent(guild, color, title, description) {
+  const cfg = getConfig(guild.id);
+  if (!cfg.logs.enabled || !cfg.logs.memberEvents || !cfg.logs.channelId) return;
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(String(description || "*").slice(0, 4096))
+    .setTimestamp();
+  sendTo(guild, cfg.logs.channelId, embed);
 }
 
 // ─── Event handlers ───
@@ -162,8 +173,58 @@ async function onMessageUpdate(oldMsg, newMsg) {
   sendTo(newMsg.guild, cfg.logs.channelId, embed);
 }
 
+async function onMemberUpdate(oldMember, newMember) {
+  if (oldMember.user?.bot) return;
+  const changes = [];
+  if (oldMember.nickname !== newMember.nickname) {
+    changes.push(`Nickname: **${oldMember.nickname || oldMember.user.username}** → **${newMember.nickname || newMember.user.username}**`);
+  }
+  const oldRoles = new Set(oldMember.roles.cache.keys());
+  const added = [...newMember.roles.cache.values()].filter(role => role.id !== newMember.guild.id && !oldRoles.has(role.id));
+  const newRoles = new Set(newMember.roles.cache.keys());
+  const removed = [...oldMember.roles.cache.values()].filter(role => role.id !== oldMember.guild.id && !newRoles.has(role.id));
+  if (added.length) changes.push(`Roles added: ${added.slice(0, 8).map(role => role.name).join(", ")}`);
+  if (removed.length) changes.push(`Roles removed: ${removed.slice(0, 8).map(role => role.name).join(", ")}`);
+  if (changes.length) logEvent(newMember.guild, 0x5865f2, "Member updated", `**${newMember.user.tag}**\n${changes.join("\n")}`);
+}
+
+async function onChannelCreate(channel) {
+  if (channel.guild) logEvent(channel.guild, 0x57f287, "Channel created", `#${channel.name || channel.id}`);
+}
+
+async function onChannelDelete(channel) {
+  if (channel.guild) logEvent(channel.guild, 0xed4245, "Channel deleted", `#${channel.name || channel.id}`);
+}
+
+async function onChannelUpdate(oldChannel, newChannel) {
+  if (!newChannel.guild || oldChannel.name === newChannel.name) return;
+  logEvent(newChannel.guild, 0xfee75c, "Channel renamed", `**${oldChannel.name || oldChannel.id}** → **${newChannel.name || newChannel.id}**`);
+}
+
+async function onRoleCreate(role) {
+  logEvent(role.guild, 0x57f287, "Role created", `**${role.name}**`);
+}
+
+async function onRoleDelete(role) {
+  logEvent(role.guild, 0xed4245, "Role deleted", `**${role.name}**`);
+}
+
+async function onRoleUpdate(oldRole, newRole) {
+  if (oldRole.name !== newRole.name) logEvent(newRole.guild, 0xfee75c, "Role renamed", `**${oldRole.name}** → **${newRole.name}**`);
+}
+
+async function onGuildBanAdd(ban) {
+  logEvent(ban.guild, 0xed4245, "Member banned", `**${ban.user?.tag || ban.user?.id || "Unknown user"}**`);
+}
+
+async function onGuildBanRemove(ban) {
+  logEvent(ban.guild, 0x57f287, "Member unbanned", `**${ban.user?.tag || ban.user?.id || "Unknown user"}**`);
+}
+
 module.exports = {
   load, save, getConfig, setConfig,
-  onMemberAdd, onMemberRemove, onMessageDelete, onMessageUpdate,
+  onMemberAdd, onMemberRemove, onMessageDelete, onMessageUpdate, onMemberUpdate,
+  onChannelCreate, onChannelDelete, onChannelUpdate,
+  onRoleCreate, onRoleDelete, onRoleUpdate, onGuildBanAdd, onGuildBanRemove,
   GREET_FILE,
 };

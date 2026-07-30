@@ -624,6 +624,7 @@ client.on("inviteDelete", invite => {
 
 // Live role tracker and nickname lock
 client.on("guildMemberUpdate", (oldMember, newMember) => {
+  greet.onMemberUpdate(oldMember, newMember).catch(err => console.error("[safe] greet.onMemberUpdate:", err.message));
   try {
     roletracker.handleRoleUpdate(oldMember, newMember);
   } catch (err) {
@@ -635,6 +636,17 @@ client.on("guildMemberUpdate", (oldMember, newMember) => {
     console.error("[femboyify] guildMemberUpdate error:", err.message);
   }
 });
+
+// Server audit log events. These use the configured Audit Logs channel in the
+// Greet/Community dashboard and are no-ops until it is enabled.
+client.on("channelCreate", channel => greet.onChannelCreate(channel).catch(err => console.error("[safe] greet.onChannelCreate:", err.message)));
+client.on("channelDelete", channel => greet.onChannelDelete(channel).catch(err => console.error("[safe] greet.onChannelDelete:", err.message)));
+client.on("channelUpdate", (oldChannel, newChannel) => greet.onChannelUpdate(oldChannel, newChannel).catch(err => console.error("[safe] greet.onChannelUpdate:", err.message)));
+client.on("roleCreate", role => greet.onRoleCreate(role).catch(err => console.error("[safe] greet.onRoleCreate:", err.message)));
+client.on("roleDelete", role => greet.onRoleDelete(role).catch(err => console.error("[safe] greet.onRoleDelete:", err.message)));
+client.on("roleUpdate", (oldRole, newRole) => greet.onRoleUpdate(oldRole, newRole).catch(err => console.error("[safe] greet.onRoleUpdate:", err.message)));
+client.on("guildBanAdd", ban => greet.onGuildBanAdd(ban).catch(err => console.error("[safe] greet.onGuildBanAdd:", err.message)));
+client.on("guildBanRemove", ban => greet.onGuildBanRemove(ban).catch(err => console.error("[safe] greet.onGuildBanRemove:", err.message)));
 
 client.once("ready", async () => {
   ctx.client = client;
@@ -649,13 +661,6 @@ client.once("ready", async () => {
     console.log(`Registered ${slashDefs.length} slash commands globally.`);
   } catch (err) {
     console.error("Failed to register slash commands:", err);
-  }
-
-  // Start the public HTTP API that the (separately hosted) dashboard talks to.
-  try {
-    require("./src/api/server").startApi(ctx);
-  } catch (err) {
-    console.error("Failed to start bot API:", err);
   }
 
   // Seed the invite-uses cache for all guilds so joins can be attributed to a code.
@@ -756,6 +761,16 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
     setInterval(() => { social.poll(client).catch(() => {}); }, 5 * 60_000).unref();
     social.poll(client).catch(() => {}); // run once shortly after startup
     settings.hydrateAiKeysFromEnv();
+
+    // Start the dashboard/API independently of Discord gateway readiness. This
+    // keeps the management UI reachable while Discord is reconnecting or when
+    // gateway DNS/network access is temporarily unavailable.
+    try {
+      require("./src/api/server").startApi(ctx);
+    } catch (err) {
+      console.error("Failed to start bot API:", err);
+    }
+
     // Start probation cleanup timer
     try {
       const mod = require("./src/commands/mod");

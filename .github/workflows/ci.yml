@@ -1,0 +1,86 @@
+# ggboi CI pipeline
+# Runs on push/PR to main: validates bot syntax + builds dashboard
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  bot-syntax:
+    name: Bot syntax check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check bot JS files syntax
+        run: |
+          echo "::group::src/ files"
+          find src/ -name '*.js' -not -path '*/node_modules/*' -exec node --check {} \;
+          echo "::endgroup::"
+          echo "::group::root files"
+          node --check index.js
+          echo "::endgroup::"
+
+      - name: Check scripts, configs, and modules
+        run: |
+          echo "::group::scripts"
+          find scripts/ -name '*.js' -not -path '*/node_modules/*' -exec node --check {} \;
+          echo "::endgroup::"
+          echo "::group::config"
+          node --check ecosystem.config.cjs 2>/dev/null || true
+          echo "::endgroup::"
+          echo "::group::modules"
+          if [ -d modules ]; then
+            find modules/ -name '*.js' -not -path '*/node_modules/*' -exec node --check {} \;
+          fi
+          echo "::endgroup::"
+
+  dashboard:
+    name: Dashboard build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: dashboard-v2/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard-v2
+        run: npm ci
+
+      - name: TypeScript type-check
+        working-directory: dashboard-v2
+        run: npx tsc -b
+
+      - name: Vite production build
+        working-directory: dashboard-v2
+        run: npx vite build
+        env:
+          VITE_BOT_API_URL: ""
+
+      - name: Verify build output
+        run: |
+          if [ ! -d "dashboard-v2/dist" ] || [ ! -f "dashboard-v2/dist/index.html" ]; then
+            echo "Build output missing"
+            exit 1
+          fi

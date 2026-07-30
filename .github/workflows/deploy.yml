@@ -1,0 +1,85 @@
+# ggboi CD pipeline
+# Auto-deploys dashboard to Vercel and/or restarts bot on Pterodactyl
+# after CI passes on main. Gated by GitHub Variables (DEPLOY_VERCEL, DEPLOY_PTERODACTYL).
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  vercel:
+    name: Deploy Dashboard to Vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: vars.DEPLOY_VERCEL == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: dashboard-v2/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dashboard-v2
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: dashboard-v2
+        run: npx vite build
+        env:
+          VITE_BOT_API_URL: ${{ vars.VITE_BOT_API_URL || '' }}
+
+      - name: Deploy to Vercel
+        working-directory: dashboard-v2
+        run: npx vercel deploy --prod --token="${{ secrets.VERCEL_TOKEN }}" \
+          --env VITE_BOT_API_URL="${{ vars.VITE_BOT_API_URL || '' }}" \
+          --scope "${{ secrets.VERCEL_ORG_ID }}"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Purge Vercel build cache
+        if: failure()
+        run: npx vercel purge --token="${{ secrets.VERCEL_TOKEN }}"
+
+  pterodactyl:
+    name: Redeploy Bot on Pterodactyl
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: vars.DEPLOY_PTERODACTYL == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Pterodactyl restart
+        run: |
+          curl -sS -X POST "${{ secrets.PTERODACTYL_URL }}/api/client/servers/${{ secrets.PTERODACTYL_SERVER }}/power" \
+            -H "Authorization: Bearer ${{ secrets.PTERODACTYL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"signal": "restart"}'
+          sleep 15
+
+  notify:
+    name: Deploy Summary
+    needs: [vercel, pterodactyl]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print deploy summary
+        run: |
+          echo "commit: ${{ github.sha }}"
+          echo "branch: ${{ github.ref_name }}"
+          echo "by: ${{ github.actor }}"
+          echo "vercel: ${{ needs.vercel.result }}"
+          echo "pterodactyl: ${{ needs.pterodactyl.result }}"

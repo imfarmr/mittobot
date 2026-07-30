@@ -58,6 +58,18 @@ function init() {
       value TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS dashboard_audit_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id   TEXT,
+      actor_id   TEXT NOT NULL,
+      actor_tag  TEXT NOT NULL,
+      action     TEXT NOT NULL,
+      target     TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS dashboard_audit_log_guild_created
+      ON dashboard_audit_log (guild_id, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS command_config (
       guild_id         TEXT,
       command          TEXT,
@@ -765,6 +777,33 @@ async function setCommandConfig(guildId, command, cfg) {
 
 async function deleteCommandConfig(guildId, command) {
   db.prepare("DELETE FROM command_config WHERE guild_id = ? AND command = ?").run(guildId, command);
+}
+
+// ── Dashboard audit log ───────────────────────────────────────────────────
+async function addDashboardAudit({ guildId = null, actorId, actorTag, action, target = null, createdAt = Date.now() }) {
+  db.prepare(`
+    INSERT INTO dashboard_audit_log (guild_id, actor_id, actor_tag, action, target, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(guildId, actorId, actorTag, action, target, createdAt);
+}
+
+async function getDashboardAudit(guildId, limit = 50) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  if (guildId) {
+    return query(`
+      SELECT id, guild_id, actor_id, actor_tag, action, target, created_at
+      FROM dashboard_audit_log
+      WHERE guild_id = ? OR guild_id IS NULL
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, [guildId, safeLimit]);
+  }
+  return query(`
+    SELECT id, guild_id, actor_id, actor_tag, action, target, created_at
+    FROM dashboard_audit_log
+    ORDER BY created_at DESC
+    LIMIT ?
+  `, [safeLimit]);
 }
 
 // ── Automod ───────────────────────────────────────────────────────────────
@@ -1886,6 +1925,10 @@ module.exports = {
   getAllCommandConfigs,
   setCommandConfig,
   deleteCommandConfig,
+
+  // ── Dashboard audit log ─────────────────────────────────────────────────
+  addDashboardAudit,
+  getDashboardAudit,
 
   // ── Automod ──────────────────────────────────────────────────────────────
   getAllAutomodConfigs,

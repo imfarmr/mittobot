@@ -23,7 +23,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center space-y-4">
         <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-        <span className="text-muted-foreground text-sm font-mono">Verifying credentials...</span>
+        <span className="text-muted-foreground text-sm font-mono">Authenticating...</span>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export default function App() {
         <Route
           path="overview"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Overview Telemetry..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <Overview />
             </Suspense>
           }
@@ -74,7 +74,7 @@ export default function App() {
         <Route
           path="moderation/*"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Moderation Deck..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <ModerationHub />
             </Suspense>
           }
@@ -82,7 +82,7 @@ export default function App() {
         <Route
           path="community/*"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Community Deck..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <CommunityHub />
             </Suspense>
           }
@@ -90,7 +90,7 @@ export default function App() {
         <Route
           path="engagement/*"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Engagement Deck..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <EngagementHub />
             </Suspense>
           }
@@ -98,7 +98,7 @@ export default function App() {
         <Route
           path="ai/*"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading AI Command Engine..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <AiHub />
             </Suspense>
           }
@@ -106,7 +106,7 @@ export default function App() {
         <Route
           path="commands"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading Commands configuration..." />}>
+            <Suspense fallback={<LoadingFallback text="If u see this dm me on discord with 'sendmemorepinterestart'"/>}>
               <CommandsPage />
             </Suspense>
           }
@@ -125,7 +125,7 @@ export default function App() {
         <Route
           path="*"
           element={
-            <Suspense fallback={<LoadingFallback text="Loading System Diagnostics..." />}>
+            <Suspense fallback={<LoadingFallback text="Loading diagnostics..." />}>
               <SystemHub />
             </Suspense>
           }
