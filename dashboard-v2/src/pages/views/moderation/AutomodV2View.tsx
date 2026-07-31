@@ -12,6 +12,7 @@ import { useGuild } from "@/hooks/useGuild";
 import { guildPath } from "@/lib/api";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 // ─── Types: the full unified automod config shape ───────────────────────────
 interface BaseRule { enabled?: boolean; action: string; [k: string]: any }
@@ -69,9 +70,13 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
 
 function ActionSelect({ value, onChange, options = RULE_ACTIONS }: { value: string; onChange: (v: string) => void; options?: string[] }) {
   return (
-    <select className="bg-background-alt/50 border border-border/40 rounded px-2 py-1 text-xs font-mono" value={value} onChange={e => onChange(e.target.value)}>
-      {options.map(a => <option key={a} value={a}>{a}</option>)}
-    </select>
+    <CustomSelect
+      value={value}
+      onChange={onChange}
+      options={options.map(option => ({ value: option, label: option }))}
+      aria-label="Automod action"
+      triggerClassName="h-8 w-auto min-w-24 rounded-lg px-2 text-xs font-mono"
+    />
   );
 }
 
@@ -169,10 +174,7 @@ export default function AutomodV2View() {
         <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Log channel</label>
-            <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={base.logChannelId ?? ""} onChange={e => setBase({ logChannelId: e.target.value || null })}>
-              <option value="">— None —</option>
-              {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-            </select>
+            <CustomSelect value={base.logChannelId ?? ""} onChange={value => setBase({ logChannelId: value || null })} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select a log channel…" aria-label="Automod v2 log channel" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Ignored channels (IDs)</label>
@@ -333,9 +335,7 @@ export default function AutomodV2View() {
               return (
                 <div key={i} className="grid grid-cols-[60px_1fr_1fr_auto] gap-2 items-center">
                   <Input type="number" min={1} max={10000} className="text-xs font-mono" value={th.heat} onChange={e => setHeat({ thresholds: thresholds.map((x, idx) => idx === i ? { ...x, heat: parseInt(e.target.value) || 0 } : x) })} />
-                  <select className="bg-background-alt/50 border border-border/40 rounded p-2 text-xs font-mono" value={th.action} onChange={e => setHeat({ thresholds: thresholds.map((x, idx) => idx === i ? { ...x, action: e.target.value as HeatThreshold["action"] } : x) })}>
-                    {HEAT_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
+                  <CustomSelect value={th.action} onChange={value => setHeat({ thresholds: thresholds.map((x, idx) => idx === i ? { ...x, action: value as HeatThreshold["action"] } : x) })} options={HEAT_ACTIONS.map(action => ({ value: action, label: action }))} aria-label={`Automod v2 heat threshold ${i + 1} action`} triggerClassName="h-8 rounded-lg px-2 text-xs font-mono" />
                   <Input className="text-xs font-mono" placeholder='e.g. "10m"' value={th.duration || ""} disabled={th.action !== "mute"} onChange={e => setHeat({ thresholds: thresholds.map((x, idx) => idx === i ? { ...x, duration: e.target.value || undefined } : x) })} />
                   <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setHeat({ thresholds: thresholds.filter((_, idx) => idx !== i) })}><Trash2 className="size-3.5" /></Button>
                 </div>

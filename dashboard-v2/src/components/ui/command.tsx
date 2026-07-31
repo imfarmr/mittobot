@@ -12,7 +12,7 @@ function Command({
   return (
     <CommandPrimitive
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+        "flex size-full flex-col overflow-hidden rounded-xl bg-popover/95 backdrop-blur-2xl text-popover-foreground",
         className
       )}
       {...props}

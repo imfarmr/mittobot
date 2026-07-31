@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Flame, Trash2, Plus } from "lucide-react";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 const ACTIONS = ["kick", "ban", "timeout"];
 const TIMEOUT_PRESETS = [
@@ -141,23 +142,16 @@ export default function DangerzoneView() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px]">
               <label className="text-xs text-muted-foreground">Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={selectedCh} onChange={e => setSelectedCh(e.target.value)}>
-                <option value="">— Select channel —</option>
-                {data.channels.filter(c => !channelEntries.some(([id]) => id === c.id)).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect value={selectedCh} onChange={setSelectedCh} options={data.channels.filter(c => !channelEntries.some(([id]) => id === c.id)).map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— Select channel —" placeholder="Select channel…" aria-label="Dangerzone trap channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Action</label>
-              <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newAction} onChange={e => setNewAction(e.target.value)}>
-                {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
+              <CustomSelect value={newAction} onChange={setNewAction} options={ACTIONS.map(value => ({ value, label: value }))} aria-label="Dangerzone action" triggerClassName="mt-1 text-xs font-mono" />
             </div>
             {newAction === "timeout" && (
               <div>
                 <label className="text-xs text-muted-foreground">Duration</label>
-                <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newTimeout} onChange={e => setNewTimeout(e.target.value)}>
-                  {TIMEOUT_PRESETS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <CustomSelect value={newTimeout} onChange={setNewTimeout} options={TIMEOUT_PRESETS.map(option => ({ value: String(option.value), label: option.label }))} aria-label="Dangerzone timeout duration" triggerClassName="mt-1 text-xs font-mono" />
               </div>
             )}
             <Button size="sm" onClick={handleAdd} disabled={!selectedCh || addMutation.isPending}>
@@ -196,9 +190,7 @@ export default function DangerzoneView() {
                 <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <label className="text-xs text-muted-foreground">Action</label>
-                    <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.action || "kick"} onChange={e => updateChannelField(channelId, "action", e.target.value)}>
-                      {ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-                    </select>
+                    <CustomSelect value={cfg.action || "kick"} onChange={value => updateChannelField(channelId, "action", value)} options={ACTIONS.map(value => ({ value, label: value }))} aria-label={`Dangerzone action for ${channel?.name || channelId}`} triggerClassName="mt-1 text-xs font-mono" />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Timeout (ms)</label>
@@ -206,10 +198,7 @@ export default function DangerzoneView() {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Log Channel</label>
-                    <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={cfg.logChannelId || ""} onChange={e => updateChannelField(channelId, "logChannelId", e.target.value || null)}>
-                      <option value="">— None —</option>
-                      {data.channels.filter(c => c.id !== channelId).map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                    </select>
+                    <CustomSelect value={cfg.logChannelId || ""} onChange={value => updateChannelField(channelId, "logChannelId", value || null)} options={data.channels.filter(c => c.id !== channelId).map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select log channel…" aria-label={`Dangerzone log channel for ${channel?.name || channelId}`} triggerClassName="mt-1 text-xs font-mono" />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground">Exempt Role IDs</label>

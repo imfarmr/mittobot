@@ -58,6 +58,16 @@ function init() {
       value TEXT
     );
 
+    -- Per-guild AI behavior overrides. Provider credentials and model defaults
+    -- remain in global_settings; toggles and server behavior live here.
+    CREATE TABLE IF NOT EXISTS guild_ai_settings (
+      guild_id TEXT NOT NULL,
+      key      TEXT NOT NULL,
+      value    TEXT,
+      PRIMARY KEY (guild_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS guild_ai_settings_guild ON guild_ai_settings (guild_id);
+
     CREATE TABLE IF NOT EXISTS dashboard_audit_log (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       guild_id   TEXT,
@@ -742,6 +752,28 @@ async function setGlobalSetting(key, val) {
     INSERT INTO global_settings (key, value) VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(key, JSON.stringify(val));
+}
+
+async function getAllGuildAiSettings() {
+  const rows = query("SELECT guild_id, key, value FROM guild_ai_settings");
+  const out = {};
+  for (const row of rows) {
+    const guild = (out[row.guild_id] ??= {});
+    try { guild[row.key] = JSON.parse(row.value); } catch { guild[row.key] = row.value; }
+  }
+  return out;
+}
+
+async function setGuildAiSetting(guildId, key, val) {
+  db.prepare(`
+    INSERT INTO guild_ai_settings (guild_id, key, value) VALUES (?, ?, ?)
+    ON CONFLICT(guild_id, key) DO UPDATE SET value = excluded.value
+  `).run(String(guildId), String(key), JSON.stringify(val));
+}
+
+async function deleteGuildAiSetting(guildId, key) {
+  db.prepare("DELETE FROM guild_ai_settings WHERE guild_id = ? AND key = ?")
+    .run(String(guildId), String(key));
 }
 
 // ── Command config ───────────────────────────────────────────────────────
@@ -1920,6 +1952,11 @@ module.exports = {
   // ── Global settings ──────────────────────────────────────────────────────
   getGlobalSettings,
   setGlobalSetting,
+
+  // ── Per-guild AI settings ───────────────────────────────────────────────
+  getAllGuildAiSettings,
+  setGuildAiSetting,
+  deleteGuildAiSetting,
 
   // ── Command config ───────────────────────────────────────────────────────
   getAllCommandConfigs,

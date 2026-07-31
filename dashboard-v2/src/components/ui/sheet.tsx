@@ -17,7 +17,7 @@ function SheetOverlay({
   return (
     <SheetPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-[rgba(0,0,0,0.58)] backdrop-blur-xl [-webkit-backdrop-filter:blur(24px)] supports-[backdrop-filter:blur(12px)]:bg-[rgba(0,0,0,0.42)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
       )}
       {...props}
@@ -26,7 +26,7 @@ function SheetOverlay({
 }
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-sidebar p-0 shadow-lg transition ease-in-out data-[state=closed]:duration-200 data-[state=open]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out",
+  "fixed z-50 gap-4 border-white/[0.14] bg-[rgba(18,18,20,0.86)] p-0 shadow-[0_24px_80px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-2xl [-webkit-backdrop-filter:blur(24px)] supports-[backdrop-filter:blur(12px)]:bg-[rgba(18,18,20,0.68)] transition ease-in-out data-[state=closed]:duration-200 data-[state=open]:duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out",
   {
     variants: {
       side: {
@@ -57,7 +57,7 @@ function SheetContent({
       <SheetPrimitive.Content className={cn(sheetVariants({ side }), className)} {...props}>
         <SheetPrimitive.Title className="sr-only">Menu</SheetPrimitive.Title>
         {children}
-        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer">
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-full opacity-70 transition-opacity hover:opacity-100 hover:bg-accent p-1.5 focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer">
           <XIcon className="size-4" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>

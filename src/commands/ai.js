@@ -43,9 +43,23 @@ function isGuildOwner(member) {
   return false;
 }
 
-function buildProviderChain() {
+function getSetting(key, guildId) {
+  return guildId && settings.GUILD_AI_KEYS.has(key)
+    ? settings.getForGuild(key, guildId)
+    : settings.get(key);
+}
+
+function setSetting(key, value, guildId) {
+  if (guildId && settings.GUILD_AI_KEYS.has(key)) {
+    settings.setForGuild(guildId, key, value);
+  } else {
+    settings.set(key, value);
+  }
+}
+
+function buildProviderChain(guildId) {
   const primaryId = settings.get("aiProvider") || "groq";
-  const fallbackIds = parseFallbackList(settings.get("aiFallbackProviders"));
+  const fallbackIds = parseFallbackList(getSetting("aiFallbackProviders", guildId));
   return [primaryId, ...fallbackIds].filter((id, i, arr) => arr.indexOf(id) === i);
 }
 
@@ -67,17 +81,18 @@ async function slashResetGlobalConversation(interaction, ctx) {
 // ─── Shared AI call logic ─────────────────────────────────────────────────
 async function runAiQuery(userContent, authorTag, authorId, ctx, msgLike) {
   userContent = sanitizeUserInput(userContent);
+  const guildId = msgLike.guild?.id || null;
 
-  const system = settings.get("aiSystemPrompt") || "You are a helpful assistant.";
+  const system = getSetting("aiSystemPrompt", guildId) || "You are a helpful assistant.";
   const messages = [
     { role: "system", content: system },
     { role: "user", content: `[${authorTag} <@${authorId}>]: ${userContent}` },
   ];
 
-  const providerIds = buildProviderChain();
-  const result = await chatWithProvider(providerIds, messages);
+  const providerIds = buildProviderChain(guildId);
+  const result = await chatWithProvider(providerIds, messages, { guildId });
   const response = result.result;
-  const thinkingEnabled = settings.get("aiThinkingEnabled") === true;
+  const thinkingEnabled = getSetting("aiThinkingEnabled", guildId) === true;
 
   let reply;
   if (typeof response === "string") {
@@ -109,10 +124,10 @@ async function runAiQuery(userContent, authorTag, authorId, ctx, msgLike) {
 // ─── Slash: /ai chat ──────────────────────────────────────────────────────
 async function handleAiChat(interaction, ctx) {
   const query = interaction.options.getString("query");
-  if (!settings.get("aiEnabled")) {
+  if (!getSetting("aiEnabled", interaction.guild?.id)) {
     return interaction.reply({ embeds: [errorEmbed("AI is currently disabled.", interaction)], flags: MessageFlags.Ephemeral });
   }
-  const chain = buildProviderChain();
+  const chain = buildProviderChain(interaction.guild?.id);
   if (!chain.some(id => settings.getAiApiKey(id))) {
     return interaction.reply({ embeds: [errorEmbed("No AI API key configured.", interaction)], flags: MessageFlags.Ephemeral });
   }
@@ -154,8 +169,8 @@ const SETTING_CATEGORIES = {
   advanced: { emoji: "⚡", label: "Advanced",   keys: ["aiFallbackProviders", "customBaseUrl", "customApiType", "aiToolPermissions"] },
 };
 
-function formatSettingValue(key, meta) {
-  const raw = settings.get(key);
+function formatSettingValue(key, meta, guildId) {
+  const raw = getSetting(key, guildId);
   if (meta.type === "boolean") return raw ? "✅ On" : "❌ Off";
   if (meta.type === "number" && raw !== undefined && raw !== null) return `\`${raw}\``;
   if (key === "aiPersonality") {
@@ -165,11 +180,11 @@ function formatSettingValue(key, meta) {
   return raw ? `\`${String(raw).slice(0, 60)}\`` : "*(not set)*";
 }
 
-function categoryEmbed(catId, session) {
+function categoryEmbed(catId, guildId) {
   const cat = SETTING_CATEGORIES[catId];
   const lines = cat.keys.map(k => {
     const meta = SETTABLE_KEYS[k];
-    const val = formatSettingValue(k, meta);
+    const val = formatSettingValue(k, meta, guildId);
     return `**${k}** — ${val}\n${meta.description}\n`;
   });
   return new EmbedBuilder()
@@ -179,16 +194,16 @@ function categoryEmbed(catId, session) {
     .setFooter({ text: "Click a button below to change a setting" });
 }
 
-function buildCategoryView(catId) {
+function buildCategoryView(catId, guildId) {
   const cat = SETTING_CATEGORIES[catId];
-  const embed = categoryEmbed(catId);
+  const embed = categoryEmbed(catId, guildId);
   const rows = [];
   let currentRow = new ActionRowBuilder();
   for (const key of cat.keys) {
     const meta = SETTABLE_KEYS[key];
     if (meta.type === "boolean") {
       // Boolean: inline toggle
-      const isOn = settings.get(key) === true;
+      const isOn = getSetting(key, guildId) === true;
       currentRow.addComponents(
         new ButtonBuilder()
           .setCustomId(`aisettings:toggle:${key}`)
@@ -254,7 +269,7 @@ ui.registerPanel("aisettings", {
   level: "admin",
   async render(session) {
     if (session.state.category) {
-      return buildCategoryView(session.state.category);
+      return buildCategoryView(session.state.category, session.guildId);
     }
     return buildCategoryPicker();
   },
@@ -279,8 +294,9 @@ ui.registerPanel("aisettings", {
       const key = arg;
       const meta = SETTABLE_KEYS[key];
       if (!meta || meta.type !== "boolean") return;
-      const newVal = !settings.get(key);
-      settings.set(key, newVal);
+      const guildId = session.guildId;
+      const newVal = !getSetting(key, guildId);
+      setSetting(key, newVal, guildId);
       await repaint();
       await ui.ephemeralNote(interaction, `✅ Set \`${key}\` to ${newVal ? "On" : "Off"}`);
     },
@@ -290,7 +306,7 @@ ui.registerPanel("aisettings", {
       const meta = SETTABLE_KEYS[key];
       if (!meta) return;
 
-      const currentVal = settings.get(key);
+      const currentVal = getSetting(key, session.guildId);
       const modalId = `aisettings_modal:${key}`;
 
       // Choice-based settings: use a select menu
@@ -402,7 +418,7 @@ ui.registerPanel("aisettings", {
       const parsed = interaction.values[0];
       const valid = listPersonalities().map(p => p.id);
       if (!valid.includes(parsed)) return;
-      settings.set(key, parsed);
+      setSetting(key, parsed, session.guildId);
       await interaction.update({ content: `✅ Set \`${key}\` to \`${parsed}\``, components: [], flags: MessageFlags.Ephemeral });
       await repaintActivePanel(interaction.user.id);
     },
@@ -463,7 +479,7 @@ async function repaintActivePanel(userId) {
   const panelSession = ui.getSession(ref.messageId, "panel:aisettings");
   if (!panelSession || !panelSession.message?.editable) return;
   const payload = panelSession.state.category
-    ? buildCategoryView(panelSession.state.category)
+    ? buildCategoryView(panelSession.state.category, ref.guildId)
     : buildCategoryPicker();
   await panelSession.message.edit(payload).catch(() => {});
 }
@@ -503,7 +519,7 @@ async function handleModalSubmit(interaction, session, repaint) {
     }
   }
 
-  settings.set(actualKey, parsed);
+  setSetting(actualKey, parsed, session.guildId || interaction.guild?.id);
   await interaction.reply({
     content: `✅ Set \`${actualKey}\` to \`${meta.type === "number" ? parsed : String(parsed).slice(0, 100)}\``,
     flags: MessageFlags.Ephemeral,
@@ -536,29 +552,30 @@ async function handleSettingsView(interaction, ctx) {
   }
 
   const personalityOpts = listPersonalities().map(p => `${p.emoji} **${p.name}** (\`${p.id}\`)`).join("\n");
-  const personalityCurrent = getPersonality(settings.get("aiPersonality"));
+  const guildId = interaction.guild.id;
+  const personalityCurrent = getPersonality(getSetting("aiPersonality", guildId));
 
   const embed = new EmbedBuilder()
     .setColor(BLURPLE)
     .setTitle("⚙️ AI Configuration")
     .addFields(
-      { name: "Enabled", value: settings.get("aiEnabled") ? "✅ Yes" : "❌ No", inline: true },
+      { name: "Enabled", value: getSetting("aiEnabled", guildId) ? "✅ Yes" : "❌ No", inline: true },
       { name: "Provider", value: `\`${settings.get("aiProvider") || "groq"}\``, inline: true },
-      { name: "Keywords", value: `\`${settings.get("aiKeyword") || "mitto"}\``, inline: true },
-      { name: "Temperature", value: `\`${settings.get("aiTemperature") ?? 0.7}\``, inline: true },
-      { name: "Max Tokens", value: `\`${settings.get("aiMaxTokens") ?? 4096}\``, inline: true },
-      { name: "Top P", value: `\`${settings.get("aiTopP") ?? 1.0}\``, inline: true },
-      { name: "Context Limit", value: `\`${settings.get("aiContextLimit") ?? 8}\` messages`, inline: true },
-      { name: "Tools", value: settings.get("aiToolsEnabled") ? "✅ On" : "❌ Off", inline: true },
-      { name: "Memory", value: settings.get("aiMemoryEnabled") ? "✅ On" : "❌ Off", inline: true },
-      { name: "Thinking Mode", value: settings.get("aiThinkingEnabled") ? "✅ On" : "❌ Off", inline: true },
-      { name: "Chatty Mode", value: settings.get("aiChattyMode") ? `✅ On (${settings.get("aiChattyCooldown")}s)` : "❌ Off", inline: true },
-      { name: "Fallback Providers", value: `\`${settings.get("aiFallbackProviders") || "none"}\``, inline: true },
+      { name: "Keywords", value: `\`${getSetting("aiKeyword", guildId) || "mitto"}\``, inline: true },
+      { name: "Temperature", value: `\`${getSetting("aiTemperature", guildId) ?? 0.7}\``, inline: true },
+      { name: "Max Tokens", value: `\`${getSetting("aiMaxTokens", guildId) ?? 4096}\``, inline: true },
+      { name: "Top P", value: `\`${getSetting("aiTopP", guildId) ?? 1.0}\``, inline: true },
+      { name: "Context Limit", value: `\`${getSetting("aiContextLimit", guildId) ?? 8}\` messages`, inline: true },
+      { name: "Tools", value: getSetting("aiToolsEnabled", guildId) ? "✅ On" : "❌ Off", inline: true },
+      { name: "Memory", value: getSetting("aiMemoryEnabled", guildId) ? "✅ On" : "❌ Off", inline: true },
+      { name: "Thinking Mode", value: getSetting("aiThinkingEnabled", guildId) ? "✅ On" : "❌ Off", inline: true },
+      { name: "Chatty Mode", value: getSetting("aiChattyMode", guildId) ? `✅ On (${getSetting("aiChattyCooldown", guildId)}s)` : "❌ Off", inline: true },
+      { name: "Fallback Providers", value: `\`${getSetting("aiFallbackProviders", guildId) || "none"}\``, inline: true },
       { name: "Personality", value: `${personalityCurrent.emoji} **${personalityCurrent.name}** (\`${personalityCurrent.id}\`)`, inline: false },
-      { name: "DM Responses", value: settings.get("aiDmEnabled") !== false ? "✅ On" : "❌ Off", inline: true },
-      { name: "Browser Tool", value: settings.get("aiBrowserEnabled") !== false ? "✅ On" : "❌ Off", inline: true },
-      { name: "Allowed Channels", value: settings.get("aiAllowedChannels") ? `\`${settings.get("aiAllowedChannels")}\`` : "All", inline: true },
-      { name: "Ignored Channels", value: settings.get("aiIgnoredChannels") ? `\`${settings.get("aiIgnoredChannels")}\`` : "None", inline: true },
+      { name: "DM Responses", value: getSetting("aiDmEnabled", guildId) !== false ? "✅ On" : "❌ Off", inline: true },
+      { name: "Browser Tool", value: getSetting("aiBrowserEnabled", guildId) !== false ? "✅ On" : "❌ Off", inline: true },
+      { name: "Allowed Channels", value: getSetting("aiAllowedChannels", guildId) ? `\`${getSetting("aiAllowedChannels", guildId)}\`` : "All", inline: true },
+      { name: "Ignored Channels", value: getSetting("aiIgnoredChannels", guildId) ? `\`${getSetting("aiIgnoredChannels", guildId)}\`` : "None", inline: true },
       { name: "Custom Base URL", value: settings.get("customBaseUrl") ? `\`${settings.get("customBaseUrl")}\`` : "Not set", inline: true },
       { name: "Custom API Type", value: `\`${settings.get("customApiType") || "openai"}\``, inline: true },
     )
@@ -663,9 +680,9 @@ async function handleSettingsSet(interaction, ctx) {
   // Apply the setting
   // Allow clearing aiSystemPrompt back to the default (harness prompt)
   if (key === "aiSystemPrompt" && parsed === "") {
-    settings.set(key, "");
+    setSetting(key, "", interaction.guild.id);
   } else {
-    settings.set(key, parsed);
+    setSetting(key, parsed, interaction.guild.id);
   }
 
   const displayValue = meta.type === "boolean" ? (parsed ? "true" : "false") : String(parsed);
@@ -903,7 +920,7 @@ async function handlePersonalityList(interaction, ctx) {
     return interaction.reply({ embeds: [errorEmbed("Only the guild owner can view personality presets.", interaction)], flags: MessageFlags.Ephemeral });
   }
 
-  const currentId = settings.get("aiPersonality") || DEFAULT_PERSONALITY;
+  const currentId = getSetting("aiPersonality", interaction.guild.id) || DEFAULT_PERSONALITY;
   const presets = listPersonalities();
 
   const lines = presets.map(p => {
@@ -938,8 +955,8 @@ async function handlePersonalitySet(interaction, ctx) {
     });
   }
 
-  const previous = settings.get("aiPersonality") || DEFAULT_PERSONALITY;
-  settings.set("aiPersonality", id);
+  const previous = getSetting("aiPersonality", interaction.guild.id) || DEFAULT_PERSONALITY;
+  setSetting("aiPersonality", id, interaction.guild.id);
 
   const prevLabel = id === previous ? "" : ` (was \`${previous}\`)`;
   const embed = new EmbedBuilder()

@@ -12,6 +12,7 @@ import { ShieldBan, Lock, Unlock, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface AntiraidConfig {
   enabled: boolean;
@@ -173,11 +174,13 @@ export default function AntiRaidView() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Gate action</label>
-                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono"
+                <CustomSelect
                   value={current.accountAge?.gateAction ?? "notify"}
-                  onChange={e => setAccountAge({ gateAction: e.target.value as AntiraidConfig["accountAge"]["gateAction"] })}>
-                  {GATE_ACTIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-                </select>
+                  onChange={value => setAccountAge({ gateAction: value as AntiraidConfig["accountAge"]["gateAction"] })}
+                  options={GATE_ACTIONS}
+                  aria-label="Account age gate action"
+                  triggerClassName="mt-1 text-xs font-mono"
+                />
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground/70">0 hours = gate disabled. Owners and admins are always exempt.</p>
@@ -234,21 +237,11 @@ export default function AntiRaidView() {
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Alert channel</label>
-            <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono"
-              value={current.alertChannelId ?? ""}
-              onChange={e => set("alertChannelId", e.target.value || null)}>
-              <option value="">— None —</option>
-              {channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-            </select>
+            <CustomSelect value={current.alertChannelId ?? ""} onChange={value => set("alertChannelId", value || null)} options={channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select alert channel…" aria-label="Anti-raid alert channel" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Quarantine role (for quarantine actions)</label>
-            <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono"
-              value={current.quarantineRoleId ?? ""}
-              onChange={e => set("quarantineRoleId", e.target.value || null)}>
-              <option value="">— None —</option>
-              {(meta?.roles || []).map(r => <option key={r.id} value={r.id}>@{r.name}</option>)}
-            </select>
+            <CustomSelect value={current.quarantineRoleId ?? ""} onChange={value => set("quarantineRoleId", value || null)} options={(meta?.roles || []).map(r => ({ value: r.id, label: `@${r.name}` }))} allowNone noneLabel="— None —" placeholder="Select quarantine role…" aria-label="Quarantine role" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div className="md:col-span-2">
             <label className="text-xs text-muted-foreground">Exempt role IDs (comma-separated — bypass the account-age gate)</label>

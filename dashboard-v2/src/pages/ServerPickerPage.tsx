@@ -29,7 +29,7 @@ export default function ServerPickerPage() {
             <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
               <Server className="size-5 text-primary" />
             </div>
-            <span className="font-semibold text-lg tracking-tight">ggboi</span>
+            <span className="font-semibold text-lg tracking-tight">Mitto</span>
             <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded font-mono">
               Control Panel
             </span>
@@ -37,7 +37,6 @@ export default function ServerPickerPage() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-xs font-mono">
-              <span className={`size-2 rounded-full ${status?.online !== false ? "bg-success animate-pulse" : "bg-destructive"}`} />
               <span className="text-muted-foreground">
                 {status?.tag || "offline"} {status?.ping ? `· ${status.ping}ms` : ""}
               </span>

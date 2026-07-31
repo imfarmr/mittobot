@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface StarboardConfig {
   enabled: boolean; channelId?: string | null; emoji: string; threshold: number;
@@ -100,10 +101,7 @@ export default function StarboardView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Board Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect value={channelId} onChange={setChannelId} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select board channel…" aria-label="Starboard channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Star Emoji</label>

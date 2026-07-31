@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Zap, Plus, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 // Action types the backend's executeAction (src/autoexec.js) actually handles.
 // The previous list offered send_message/warn_member/mute_member/kick_member,
@@ -202,9 +203,7 @@ function RuleEditor({ guildId, editingId, onClose }: { guildId: string; editingI
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Trigger</label>
-            <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={trigger} onChange={e => setTrigger(e.target.value)}>
-              {TRIGGERS.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <CustomSelect value={trigger} onChange={setTrigger} options={TRIGGERS.map(value => ({ value, label: value }))} aria-label="Automation trigger" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Priority</label>

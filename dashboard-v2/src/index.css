@@ -2,59 +2,59 @@
 @import "tw-animate-css";
 
 /* ════════════════════════════════════════════════════════════════════════════
-   ggboi Dashboard v2 — Design tokens
-   Ported from v1's zinc/indigo dark system (styles.css) into Tailwind v4.
-   Dark-only for now; the shadcn variable names are kept so vendored ui/
-   primitives work unmodified.
+   Mitto Dashboard — Apple Design Language (iOS/macOS 2026)
+   Dark mode only. Uses Apple's SF font stack, frosted glass surfaces, vibrant
+   accent colors, and macOS System Settings-inspired layout tokens.
    ════════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* ── Surfaces (v1: --bg / --bg-alt / --surface family) ── */
-  --background: #09090b;
-  --background-alt: #0f0f12;
-  --foreground: #fafafa;
-  --card: #131316;
-  --card-foreground: #fafafa;
-  --popover: #18181b;
-  --popover-foreground: #fafafa;
+  /* ── Apple Dark Mode Surfaces ── */
+  --background: #000000;
+  --background-alt: #0a0a0a;
+  --foreground: #ffffff;
+  --card: rgba(28, 28, 30, 0.85);
+  --card-foreground: #ffffff;
+  --popover: rgba(28, 28, 30, 0.95);
+  --popover-foreground: #ffffff;
 
-  /* ── Accent (v1: indigo #6366f1) ── */
-  --primary: #6366f1;
+  /* ── iOS/macOS Accent Colors ── */
+  --primary: #007AFF;
   --primary-foreground: #ffffff;
-  --secondary: #1c1c21;
-  --secondary-foreground: #d4d4d8;
-  --muted: #1c1c21;
-  --muted-foreground: #a1a1aa;
-  --accent: #252529;
-  --accent-foreground: #fafafa;
-  --destructive: #ef4444;
+  --secondary: rgba(255, 255, 255, 0.08);
+  --secondary-foreground: rgba(255, 255, 255, 0.85);
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: rgba(255, 255, 255, 0.5);
+  --accent: rgba(255, 255, 255, 0.12);
+  --accent-foreground: #ffffff;
+  --destructive: #FF453A;
   --destructive-foreground: #ffffff;
 
-  /* ── Semantic ── */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --info: #3b82f6;
+  /* ── Semantic Apple Colors ── */
+  --success: #34C759;
+  --warning: #FF9F0A;
+  --info: #5AC8FA;
 
-  /* ── Lines & focus ── */
+  /* ── Ultra-subtle borders ── */
   --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: rgba(99, 102, 241, 0.55);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: rgba(0, 122, 255, 0.45);
 
   /* ── Charts ── */
-  --chart-1: #6366f1;
-  --chart-2: #f59e0b;
-  --chart-3: #ec4899;
-  --chart-4: #10b981;
-  --chart-5: #3b82f6;
+  --chart-1: #007AFF;
+  --chart-2: #FF9F0A;
+  --chart-3: #FF375F;
+  --chart-4: #34C759;
+  --chart-5: #5AC8FA;
 
-  /* ── Sidebar ── */
-  --sidebar: #0f0f12;
-  --sidebar-foreground: #a1a1aa;
-  --sidebar-accent: #1c1c21;
-  --sidebar-accent-foreground: #fafafa;
+  /* ── Sidebar (macOS System Settings style) ── */
+  --sidebar: rgba(0, 0, 0, 0.3);
+  --sidebar-foreground: rgba(255, 255, 255, 0.55);
+  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255, 255, 255, 0.06);
 
-  --radius: 0.5rem;
+  /* ── Radius (Apple-style: larger, more rounded) ── */
+  --radius: 0.75rem;
 }
 
 @theme inline {
@@ -96,10 +96,14 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-full: 9999px;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+  /* Apple system font stack */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", "Cascadia Code", "Fira Code",
+    Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {
@@ -108,53 +112,174 @@
   }
   html {
     color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-size: 14px;
+    font-size: 13px;
+    letter-spacing: 0.01em;
   }
 
-  /* Thin dark scrollbars everywhere */
+  /* Thin dark scrollbars — Apple style (hidden track, thin thumb) */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
   }
   *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   *::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 999px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
+
+  /* Subtle selection color */
+  ::selection {
+    background: rgba(0, 122, 255, 0.3);
+  }
+}
+
+/* ── Forms Dark reference treatment ────────────────────────────────────────
+   Native controls appear in a number of feature views alongside the shared
+   shadcn primitives. Keep them on the same dark, inset-surface system so a
+   form never changes visual language halfway through a page. */
+@layer base {
+  select:not([data-slot]),
+  input:not([data-slot]):is(
+    :not([type]),
+    [type="text"],
+    [type="search"],
+    [type="email"],
+    [type="url"],
+    [type="password"],
+    [type="number"],
+    [type="tel"],
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ),
+  textarea:not([data-slot]) {
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 0.5rem !important;
+    background-color: rgba(255, 255, 255, 0.055) !important;
+    color: var(--foreground) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  select:not([data-slot]):hover,
+  input:not([data-slot]):is(
+    :not([type]),
+    [type="text"],
+    [type="search"],
+    [type="email"],
+    [type="url"],
+    [type="password"],
+    [type="number"],
+    [type="tel"],
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ):hover,
+  textarea:not([data-slot]):hover {
+    border-color: rgba(255, 255, 255, 0.18) !important;
+    background-color: rgba(255, 255, 255, 0.07) !important;
+  }
+
+  select:not([data-slot]):focus,
+  input:not([data-slot]):is(
+    :not([type]),
+    [type="text"],
+    [type="search"],
+    [type="email"],
+    [type="url"],
+    [type="password"],
+    [type="number"],
+    [type="tel"],
+    [type="date"],
+    [type="datetime-local"],
+    [type="month"],
+    [type="time"],
+    [type="week"]
+  ):focus,
+  textarea:not([data-slot]):focus {
+    border-color: color-mix(in srgb, var(--primary) 70%, transparent) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  }
+
+  select:not([data-slot]) option {
+    background: #1c1c1e;
+    color: #fff;
+  }
+
+  input[type="range"] {
+    accent-color: var(--primary);
+    height: 1rem;
+    cursor: pointer;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+}
+
+/* Custom image backgrounds stay behind the glass surfaces and remain readable. */
+.custom-background-layer {
+  background-attachment: fixed;
+  transition: opacity 180ms ease;
+}
+
+/* ── Performance mode ──────────────────────────────────────────────────────
+   Set by usePerformanceMode. Keep transitions technically present so Radix
+   can complete its lifecycle, but avoid expensive compositing and long motion. */
+.performance-mode,
+.performance-mode body {
+  --performance-blur: none;
+}
+
+.performance-mode *,
+.performance-mode *::before,
+.performance-mode *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.performance-mode [class*="shadow-"] {
+  box-shadow: none !important;
+}
+
+.performance-mode [class*="backdrop-blur"] {
+  background-color: rgba(28, 28, 30, 0.96) !important;
+}
+
+.performance-mode .bg-hero-grid {
+  background-image: none;
+}
+
+.performance-mode .custom-background-layer {
+  opacity: 0 !important;
+  background-attachment: scroll;
 }
 
 /* Subtle grid backdrop used by login/landing hero */
 .bg-hero-grid {
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-/* Pulsing status dot */
-@keyframes status-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
-  }
-}
-.status-dot {
-  @apply inline-block size-2 rounded-full bg-success;
-  animation: status-pulse 2s ease-in-out infinite;
-}
-.status-dot--offline {
-  @apply bg-destructive;
-  animation: none;
+    radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

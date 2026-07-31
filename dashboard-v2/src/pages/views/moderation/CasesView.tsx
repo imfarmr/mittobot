@@ -10,6 +10,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Badge } from "@/components/ui/badge";
 import { FolderOpen, RefreshCw, Download, X } from "lucide-react";
 import { toast } from "sonner";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface CaseEntry {
   id: number; guild_id: string; user_id: string; mod_id: string;
@@ -152,10 +153,7 @@ export default function CasesView() {
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Action</label>
-            <select className="w-full bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono mt-1" value={action} onChange={e => setAction(e.target.value)}>
-              <option value="">All actions</option>
-              {ACTION_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
+            <CustomSelect value={action} onChange={setAction} options={ACTION_OPTIONS.map(value => ({ value, label: value }))} allowNone noneLabel="All actions" placeholder="Select action…" aria-label="Case action filter" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Moderator ID</label>
@@ -175,12 +173,7 @@ export default function CasesView() {
           </div>
           <div>
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">Limit</label>
-            <select className="w-full bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono mt-1" value={limit} onChange={e => setLimit(parseInt(e.target.value))}>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-              <option value={500}>500</option>
-              <option value={1000}>1000</option>
-            </select>
+            <CustomSelect value={String(limit)} onChange={value => setLimit(Number.parseInt(value, 10))} options={[100, 200, 500, 1000].map(value => ({ value: String(value), label: String(value) }))} aria-label="Cases result limit" triggerClassName="mt-1 text-xs font-mono" />
           </div>
         </CardContent>
       </Card>

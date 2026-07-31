@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Calendar } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -100,17 +101,11 @@ export default function BirthdaysView() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Announcement Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect value={channelId} onChange={setChannelId} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select channel…" aria-label="Birthday announcement channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Birthday Role (optional)</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={roleId} onChange={e => setRoleId(e.target.value)}>
-                <option value="">— None —</option>
-                {data.roles.map(r => <option key={r.id} value={r.id}>@{r.name}</option>)}
-              </select>
+              <CustomSelect value={roleId} onChange={setRoleId} options={data.roles.map(r => ({ value: r.id, label: `@${r.name}` }))} allowNone noneLabel="— None —" placeholder="Select role…" aria-label="Birthday role" triggerClassName="mt-1 text-xs font-mono" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Announce Hour (UTC 0–23)</label>

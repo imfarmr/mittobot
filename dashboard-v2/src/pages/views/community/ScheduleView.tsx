@@ -11,6 +11,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Clock, Plus, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface ScheduleEntry {
   id: number; guild_id: string; channel_id: string;
@@ -119,10 +120,7 @@ export default function ScheduleView() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Channel</label>
-                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newChannelId} onChange={e => setNewChannelId(e.target.value)}>
-                  <option value="">— Select channel —</option>
-                  {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-                </select>
+                <CustomSelect value={newChannelId} onChange={setNewChannelId} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— Select channel —" placeholder="Select channel…" aria-label="Scheduled message channel" triggerClassName="mt-1 text-xs font-mono" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Scheduled At</label>
@@ -130,12 +128,7 @@ export default function ScheduleView() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">Recurrence</label>
-                <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newRecurrence} onChange={e => setNewRecurrence(e.target.value)}>
-                  <option value="">— One-time —</option>
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
+                <CustomSelect value={newRecurrence} onChange={setNewRecurrence} options={[{ value: "daily", label: "Daily" }, { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }]} allowNone noneLabel="— One-time —" placeholder="Choose recurrence…" aria-label="Message recurrence" triggerClassName="mt-1 text-xs font-mono" />
               </div>
             </div>
             <div>

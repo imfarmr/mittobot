@@ -701,19 +701,29 @@ function startApi(ctx) {
     res.json({ ok: true, settings: getBotSettings() });
   });
 
-  // ─── AI (owner-only — global AI configuration) ─────────────────────────
+  // ─── AI (owner-only — provider credentials are global; behavior is per guild) ──
   app.get("/api/ai", requireAuth, requireOwner, async (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId is required for AI settings" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
     try {
-      res.json(await ai.getPublicSettingsAsync());
+      res.json(await ai.getPublicSettingsAsync(guildId));
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
 
   app.post("/api/ai", requireAuth, requireOwner, (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId is required for AI settings" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
     try {
-      ai.updateSettings(req.body || {});
-      res.json({ ok: true, ...ai.getPublicSettings() });
+      ai.updateSettings(req.body || {}, guildId);
+      res.json({ ok: true, ...ai.getPublicSettings(guildId) });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
@@ -849,13 +859,17 @@ function startApi(ctx) {
   // Owner-only — streams AI responses token-by-token with a typewriter effect.
   app.post("/api/ai/chat", requireAuth, requireOwner, async (req, res) => {
     const { message, history, thinkingEnabled, guildId, model: modelOverride } = req.body || {};
+    if (!guildId) return res.status(400).json({ error: "guildId is required for AI chat" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
 
     if (!message || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ error: "Message is required" });
     }
 
-    if (!settings.get("aiEnabled")) {
-      return res.status(503).json({ error: "AI is currently disabled" });
+    if (!settings.getForGuild("aiEnabled", guildId)) {
+      return res.status(503).json({ error: "AI is currently disabled for this server" });
     }
 
     // Set up SSE
@@ -909,12 +923,13 @@ function startApi(ctx) {
       const result = await chatWithProvider(providerIds, messages, {
         providerId: overrideModel ? primaryId : null,
         model: overrideModel,
+        guildId,
         disableTools: true,
       });
       const response = result.result;
       const think = typeof thinkingEnabled === "boolean"
         ? thinkingEnabled
-        : settings.get("aiThinkingEnabled") === true;
+        : settings.getForGuild("aiThinkingEnabled", guildId) === true;
 
       let fullText = "";
 

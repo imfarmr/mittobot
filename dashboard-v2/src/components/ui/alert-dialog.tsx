@@ -15,7 +15,7 @@ function AlertDialogOverlay({
   return (
     <AlertDialogPrimitive.Overlay
       className={cn(
-        "fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-[rgba(0,0,0,0.58)] backdrop-blur-xl [-webkit-backdrop-filter:blur(24px)] supports-[backdrop-filter:blur(12px)]:bg-[rgba(0,0,0,0.42)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
       )}
       {...props}
@@ -32,7 +32,7 @@ function AlertDialogContent({
       <AlertDialogOverlay />
       <AlertDialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border border-border bg-popover p-6 shadow-lg duration-200 sm:rounded-lg",
+          "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border border-white/[0.16] bg-[rgba(28,28,30,0.9)] backdrop-blur-2xl [-webkit-backdrop-filter:blur(24px)] supports-[backdrop-filter:blur(12px)]:bg-[rgba(28,28,30,0.68)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.1)] duration-200 sm:rounded-2xl",
           className
         )}
         {...props}

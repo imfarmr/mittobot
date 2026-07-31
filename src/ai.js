@@ -333,6 +333,8 @@ function conversationKey(message) {
 
 async function buildMessageHistory(message, ctx, limit = 8, userContent, images = []) {
   const { client } = ctx;
+  const guildId = message.guild?.id || null;
+  const guildGet = key => settings.getForGuild(key, guildId);
   const { scope, key } = conversationKey(message);
   const guild = message.guild || null;
   const isDM = !message.guild;
@@ -387,7 +389,7 @@ async function buildMessageHistory(message, ctx, limit = 8, userContent, images 
   } else if (usesConcisePrompt(providerHint)) {
     system = settings.AI_SYSTEM_PROMPT_CONCISE;
   } else {
-    system = settings.get("aiSystemPrompt")
+    system = guildGet("aiSystemPrompt")
       || "You are a helpful Discord assistant. Keep replies concise and friendly.";
   }
   system += `\n\n### CONVERSATION SCOPE:\n- Scope: ${scopeLabel}`;
@@ -401,7 +403,7 @@ async function buildMessageHistory(message, ctx, limit = 8, userContent, images 
   // and behavior tone. The personality prefix acts as a top-level instruction
   // that influences how the harness prompt below is interpreted.
   {
-    const personalityId = settings.get("aiPersonality") || DEFAULT_PERSONALITY;
+    const personalityId = guildGet("aiPersonality") || DEFAULT_PERSONALITY;
     const preset = getPersonality(personalityId);
     const sep = "\n\n" + "=".repeat(80) + "\n# PERSONALITY OVERRIDE — " + preset.emoji + " " + preset.name + " (" + preset.id + ")\n" + "=".repeat(80) + "\n\n";
     system = preset.systemPrefix + sep + system;
@@ -426,7 +428,7 @@ async function buildMessageHistory(message, ctx, limit = 8, userContent, images 
   }
 
   // Memory injection — token-efficient format for constrained providers
-  if (message.guild && settings.get("aiMemoryEnabled") !== false) {
+  if (message.guild && guildGet("aiMemoryEnabled") !== false) {
     const aiMemory = require("./ai/memory");
     const memories = aiMemory.recall(message.guild.id, message.author.id, concise ? 8 : 15);
     if (memories.length > 0) {
@@ -496,6 +498,7 @@ function cleanResponse(text, thinkingEnabled) {
 }
 
 async function chatWithProvider(providerIds, messages, options = {}) {
+  const guildGet = key => settings.getForGuild(key, options.guildId || null);
   if (!Array.isArray(providerIds)) providerIds = [providerIds];
   const modelByProvider = options && typeof options.modelByProvider === "object" && options.modelByProvider
     ? options.modelByProvider
@@ -550,15 +553,15 @@ async function chatWithProvider(providerIds, messages, options = {}) {
     const opts = {
       apiKey,
       model,
-      temperature: Number(settings.get("aiTemperature") ?? 0.7),
-      maxTokens: Number(settings.get("aiMaxTokens") ?? 1024),
-      topP: Number(settings.get("aiTopP") ?? 1.0),
-      thinkingEnabled: settings.get("aiThinkingEnabled") === true,
+      temperature: Number(guildGet("aiTemperature") ?? 0.7),
+      maxTokens: Number(guildGet("aiMaxTokens") ?? 1024),
+      topP: Number(guildGet("aiTopP") ?? 1.0),
+      thinkingEnabled: guildGet("aiThinkingEnabled") === true,
     };
     if (provider.baseUrlField) opts.baseUrl = settings.get(provider.baseUrlField);
     if (provider.apiTypeField) opts.apiType = settings.get(provider.apiTypeField);
 
-    if (options.disableTools !== true && settings.get("aiToolsEnabled") !== false) {
+    if (options.disableTools !== true && guildGet("aiToolsEnabled") !== false) {
       const tools = require("./ai/tools");
       opts.tools = tools.getOpenAiTools();
     }
@@ -588,7 +591,9 @@ async function chatWithProvider(providerIds, messages, options = {}) {
 }
 
 async function handleAiMessage(message, ctx) {
-  if (!settings.get("aiEnabled")) return false;
+  const guildId = message.guild?.id || null;
+  const guildGet = key => settings.getForGuild(key, guildId);
+  if (!guildGet("aiEnabled")) return false;
   const isDM = !message.guild;
 
   const providerId = settings.get("aiProvider") || "groq";
@@ -600,8 +605,8 @@ async function handleAiMessage(message, ctx) {
     if (!hasAnyKey) return false;
   }
 
-  const allowed = parseChannelList(settings.get("aiAllowedChannels"));
-  const ignored = parseChannelList(settings.get("aiIgnoredChannels"));
+  const allowed = parseChannelList(guildGet("aiAllowedChannels"));
+  const ignored = parseChannelList(guildGet("aiIgnoredChannels"));
   // Channel allow/block lists only apply to guild channels — DMs always pass
   if (!isDM && !isChannelAllowed(message.channel.id, allowed, ignored)) return false;
 
@@ -622,16 +627,16 @@ async function handleAiMessage(message, ctx) {
     if (!userContent) userContent = "The user replied to your message without text. Ask what they need.";
   } else {
     // Keyword trigger — respond when someone says the bot's keyword
-    const keyword = (settings.get("aiKeyword") || "mitto").toLowerCase();
+    const keyword = (guildGet("aiKeyword") || "mitto").toLowerCase();
     const msgLower = message.content.toLowerCase();
     const pattern = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
     if (keyword && pattern.test(msgLower)) {
       console.log(`[ai] Keyword trigger "${keyword}" matched in message from ${message.author.tag}`);
       userContent = message.content.trim();
-    } else if (settings.get("aiChattyMode") === true) {
+    } else if (guildGet("aiChattyMode") === true) {
       // Chatty mode — respond naturally to conversations without being pinged.
       // Per-channel cooldown prevents the bot from dominating the chat.
-      const cooldownSec = Number(settings.get("aiChattyCooldown")) || 60;
+      const cooldownSec = Number(guildGet("aiChattyCooldown")) || 60;
       const last = chattyCooldowns.get(message.channel.id);
       if (last && Date.now() - last < cooldownSec * 1000) {
         return false;
@@ -671,20 +676,20 @@ async function handleAiMessage(message, ctx) {
 
     // Build fallback chain: primary + configured fallbacks (deduplicated, limited to 5)
     const primaryId = settings.get("aiProvider") || "groq";
-    const fallbackIds = parseFallbackList(settings.get("aiFallbackProviders"));
+    const fallbackIds = parseFallbackList(guildGet("aiFallbackProviders"));
     const providerIds = [primaryId, ...fallbackIds].filter((id, i, arr) => arr.indexOf(id) === i);
     let activeProviderId = primaryId;
 
     let messages = await buildMessageHistory(
       message, ctx,
-      Number(settings.get("aiContextLimit") ?? 8),
+      Number(guildGet("aiContextLimit") ?? 8),
       userContent,
       images
     );
     let loopCount = 0;
     const MAX_LOOPS = 15;
     let finalReply = "";
-    const thinkingEnabled = settings.get("aiThinkingEnabled") === true;
+    const thinkingEnabled = guildGet("aiThinkingEnabled") === true;
     startTime = Date.now(); // for analytics latency tracking
 
     // Pin subsequent tool-calling iterations to the first working provider
@@ -704,7 +709,7 @@ async function handleAiMessage(message, ctx) {
       let response;
       const idsToTry = pinnedProvider ? [pinnedProvider] : providerIds;
       try {
-        const chatResult = await chatWithProvider(idsToTry, messages);
+        const chatResult = await chatWithProvider(idsToTry, messages, { guildId });
         response = chatResult.result;
         if (!pinnedProvider) pinnedProvider = chatResult.providerId;
         if (chatResult.providerId !== primaryId) {
@@ -720,7 +725,7 @@ async function handleAiMessage(message, ctx) {
           console.warn(`[ai] All providers rate limited, retrying in ${delay / 1000}s...`);
           await new Promise(r => setTimeout(r, delay));
           try {
-            const retryResult = await chatWithProvider(idsToTry, messages);
+            const retryResult = await chatWithProvider(idsToTry, messages, { guildId });
             response = retryResult.result;
             activeProviderId = retryResult.providerId;
           } catch (retryErr) {
@@ -826,7 +831,7 @@ async function handleAiMessage(message, ctx) {
     }
 
     // Update chatty cooldown after a successful response (only in chatty mode)
-    if (settings.get("aiChattyMode") === true && chunks.length > 0) {
+    if (guildGet("aiChattyMode") === true && chunks.length > 0) {
       chattyCooldowns.set(message.channel.id, Date.now());
     }
 
@@ -865,7 +870,7 @@ async function handleAiMessage(message, ctx) {
     clearInterval(typingInterval);
 
     // Auto-memory: fire-and-forget memory extraction after successful response
-    if (settings.get("aiMemoryEnabled") !== false && settings.get("aiToolsEnabled") !== false) {
+    if (guildGet("aiMemoryEnabled") !== false && guildGet("aiToolsEnabled") !== false) {
       try {
         extractMemoriesAsync(message, userContent, finalReply, activeProviderId).catch(() => {});
       } catch { /* memory extraction is best-effort */ }
@@ -903,20 +908,21 @@ function providerPublicMeta(provider) {
   };
 }
 
-function getPublicSettings() {
+function getPublicSettings(guildId = null) {
+  const guildGet = key => settings.getForGuild(key, guildId);
   const providerId = settings.get("aiProvider") || "groq";
   const provider = getProvider(providerId) || getProvider("groq");
   const key = settings.getAiApiKey(providerId);
   const storedModel = settings.getAiModel(providerId);
 
   return {
-    aiEnabled:          settings.get("aiEnabled"),
+    aiEnabled:          guildGet("aiEnabled"),
     aiProvider:         providerId,
     providers:          listProviders().map(providerPublicMeta),
     model:              storedModel,
-    aiSystemPrompt:     settings.get("aiSystemPrompt"),
-    aiAllowedChannels:  settings.get("aiAllowedChannels"),
-    aiIgnoredChannels:  settings.get("aiIgnoredChannels"),
+    aiSystemPrompt:     guildGet("aiSystemPrompt"),
+    aiAllowedChannels:  guildGet("aiAllowedChannels"),
+    aiIgnoredChannels:  guildGet("aiIgnoredChannels"),
     hasApiKey:          Boolean(key),
     apiKeyPreview:      key ? `••••${key.slice(-4)}` : "",
     models:             provider.defaultModels,
@@ -924,31 +930,32 @@ function getPublicSettings() {
     customApiType:      settings.get("customApiType"),
     groqModel:          settings.get("groqModel"),
     // Advanced parameters
-    aiTemperature:      settings.get("aiTemperature"),
-    aiMaxTokens:        settings.get("aiMaxTokens"),
-    aiTopP:             settings.get("aiTopP"),
-    aiContextLimit:     settings.get("aiContextLimit"),
-    aiToolsEnabled:     settings.get("aiToolsEnabled"),
-    aiMemoryEnabled:    settings.get("aiMemoryEnabled"),
-    aiThinkingEnabled:   settings.get("aiThinkingEnabled"),
-    aiFallbackProviders:  settings.get("aiFallbackProviders") || "",
-    aiChattyMode:         settings.get("aiChattyMode") === true,
-    aiChattyCooldown:     settings.get("aiChattyCooldown") ?? 60,
-    aiToolPermissions:    settings.get("aiToolPermissions") || "",
+    aiTemperature:      guildGet("aiTemperature"),
+    aiMaxTokens:        guildGet("aiMaxTokens"),
+    aiTopP:             guildGet("aiTopP"),
+    aiContextLimit:     guildGet("aiContextLimit"),
+    aiToolsEnabled:     guildGet("aiToolsEnabled"),
+    aiMemoryEnabled:    guildGet("aiMemoryEnabled"),
+    aiThinkingEnabled:   guildGet("aiThinkingEnabled"),
+    aiFallbackProviders:  guildGet("aiFallbackProviders") || "",
+    aiChattyMode:         guildGet("aiChattyMode") === true,
+    aiChattyCooldown:     guildGet("aiChattyCooldown") ?? 60,
+    aiToolPermissions:    guildGet("aiToolPermissions") || "",
     // Keys that the dashboard AI config surface reads back so toggles/inputs
     // reflect their stored state on reload. Previously these were writable via
     // updateSettings but never returned by GET /api/ai, so the dashboard always
     // rendered them as off/empty after a refresh.
-    aiDmEnabled:          settings.get("aiDmEnabled"),
-    aiBrowserEnabled:     settings.get("aiBrowserEnabled"),
-    aiKeyword:            settings.get("aiKeyword") || "",
-    aiPersonality:        settings.get("aiPersonality") || "neutral",
+    aiDmEnabled:          guildGet("aiDmEnabled"),
+    aiBrowserEnabled:     guildGet("aiBrowserEnabled"),
+    aiKeyword:            guildGet("aiKeyword") || "",
+    aiPersonality:        guildGet("aiPersonality") || "neutral",
+    guildId,
     providerStatus:       getProviderStatusSnapshot(),
   };
 }
 
-async function getPublicSettingsAsync() {
-  const base = getPublicSettings();
+async function getPublicSettingsAsync(guildId = null) {
+  const base = getPublicSettings(guildId);
   const providerId = base.aiProvider;
   const provider = getProvider(providerId);
   if (!provider) return base;
@@ -1004,8 +1011,12 @@ function getProviderStatusSnapshot() {
   return status;
 }
 
-function updateSettings(body) {
-  if (typeof body.aiEnabled === "boolean") settings.set("aiEnabled", body.aiEnabled);
+function updateSettings(body, guildId = null) {
+  const setSetting = (key, value) => guildId && settings.GUILD_AI_KEYS.has(key)
+    ? settings.setForGuild(guildId, key, value)
+    : settings.set(key, value);
+
+  if (typeof body.aiEnabled === "boolean") setSetting("aiEnabled", body.aiEnabled);
 
   if (typeof body.aiProvider === "string" && getProvider(body.aiProvider.trim())) {
     settings.set("aiProvider", body.aiProvider.trim());
@@ -1043,15 +1054,15 @@ function updateSettings(body) {
   }
 
   if (typeof body.aiSystemPrompt === "string") {
-    settings.set("aiSystemPrompt", body.aiSystemPrompt.slice(0, 20000));
+    setSetting("aiSystemPrompt", body.aiSystemPrompt.slice(0, 20000));
   }
 
   if (typeof body.aiAllowedChannels === "string") {
-    settings.set("aiAllowedChannels", body.aiAllowedChannels.trim());
+    setSetting("aiAllowedChannels", body.aiAllowedChannels.trim());
   }
 
   if (typeof body.aiIgnoredChannels === "string") {
-    settings.set("aiIgnoredChannels", body.aiIgnoredChannels.trim());
+    setSetting("aiIgnoredChannels", body.aiIgnoredChannels.trim());
   }
 
   if (body.clearApiKey === true && activeProvider) {
@@ -1061,36 +1072,36 @@ function updateSettings(body) {
   }
 
   // Advanced settings
-  if (typeof body.aiTemperature === "number") settings.set("aiTemperature", body.aiTemperature);
-  if (typeof body.aiMaxTokens === "number") settings.set("aiMaxTokens", body.aiMaxTokens);
-  if (typeof body.aiTopP === "number") settings.set("aiTopP", body.aiTopP);
-  if (typeof body.aiContextLimit === "number") settings.set("aiContextLimit", body.aiContextLimit);
-  if (typeof body.aiToolsEnabled === "boolean") settings.set("aiToolsEnabled", body.aiToolsEnabled);
-  if (typeof body.aiMemoryEnabled === "boolean") settings.set("aiMemoryEnabled", body.aiMemoryEnabled);
-  if (typeof body.aiThinkingEnabled === "boolean") settings.set("aiThinkingEnabled", body.aiThinkingEnabled);
+  if (typeof body.aiTemperature === "number") setSetting("aiTemperature", body.aiTemperature);
+  if (typeof body.aiMaxTokens === "number") setSetting("aiMaxTokens", body.aiMaxTokens);
+  if (typeof body.aiTopP === "number") setSetting("aiTopP", body.aiTopP);
+  if (typeof body.aiContextLimit === "number") setSetting("aiContextLimit", body.aiContextLimit);
+  if (typeof body.aiToolsEnabled === "boolean") setSetting("aiToolsEnabled", body.aiToolsEnabled);
+  if (typeof body.aiMemoryEnabled === "boolean") setSetting("aiMemoryEnabled", body.aiMemoryEnabled);
+  if (typeof body.aiThinkingEnabled === "boolean") setSetting("aiThinkingEnabled", body.aiThinkingEnabled);
 
   if (typeof body.aiFallbackProviders === "string") {
     const cleaned = parseFallbackList(body.aiFallbackProviders).join(",");
-    settings.set("aiFallbackProviders", cleaned);
+    setSetting("aiFallbackProviders", cleaned);
   }
 
-  if (typeof body.aiChattyMode === "boolean") settings.set("aiChattyMode", body.aiChattyMode);
+  if (typeof body.aiChattyMode === "boolean") setSetting("aiChattyMode", body.aiChattyMode);
   if (typeof body.aiChattyCooldown === "number" && body.aiChattyCooldown >= 5 && body.aiChattyCooldown <= 3600) {
-    settings.set("aiChattyCooldown", body.aiChattyCooldown);
+    setSetting("aiChattyCooldown", body.aiChattyCooldown);
   }
-  if (typeof body.aiDmEnabled === "boolean") settings.set("aiDmEnabled", body.aiDmEnabled);
-  if (typeof body.aiBrowserEnabled === "boolean") settings.set("aiBrowserEnabled", body.aiBrowserEnabled);
+  if (typeof body.aiDmEnabled === "boolean") setSetting("aiDmEnabled", body.aiDmEnabled);
+  if (typeof body.aiBrowserEnabled === "boolean") setSetting("aiBrowserEnabled", body.aiBrowserEnabled);
 
   // Keyword trigger: the chat keyword that wakes the AI in guild channels.
   if (typeof body.aiKeyword === "string") {
     const kw = body.aiKeyword.trim().slice(0, 32);
-    settings.set("aiKeyword", kw);
+    setSetting("aiKeyword", kw);
   }
   // Personality preset: only accept ids actually defined in personalities.js
   // so a stale/typo'd value can't point at a non-existent preset.
   if (typeof body.aiPersonality === "string") {
     const pid = body.aiPersonality.trim().toLowerCase();
-    if (getPersonality(pid)) settings.set("aiPersonality", pid);
+    if (getPersonality(pid)) setSetting("aiPersonality", pid);
   }
 }
 

@@ -5,6 +5,7 @@ import { guildPath } from "@/lib/api";
 import { useGuild } from "@/hooks/useGuild";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { CustomSelect } from "@/components/app/CustomSelect";
 import { TrendingUp, RefreshCw } from "lucide-react";
 
 // Mirrors the real /api/ai/analytics response (src/db.js: getAiAnalytics,
@@ -98,11 +99,13 @@ export default function AiAnalyticsView() {
           </div>
         </div>
         <div className="flex gap-2">
-          <select className="bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={days} onChange={e => setDays(parseInt(e.target.value))}>
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-          </select>
+          <CustomSelect
+            value={String(days)}
+            onChange={value => setDays(Number.parseInt(value, 10))}
+            options={[{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]}
+            aria-label="Analytics time range"
+            triggerClassName="h-9 w-28 text-xs font-mono"
+          />
           <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`size-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Refresh
           </Button>

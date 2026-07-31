@@ -6,9 +6,9 @@ const { OWNER_IDS, validation } = require("../utils");
 const { SAFE_ALLOWED_MENTIONS, sanitizeAiOutput } = require("./sanitize-output");
 
 // Resolve tool permissions from settings. Returns "all" | "mod" | "admin" | "owner".
-function getToolPermission(toolName) {
+function getToolPermission(toolName, guildId) {
   try {
-    const raw = settings.get("aiToolPermissions");
+    const raw = settings.getForGuild("aiToolPermissions", guildId);
     if (!raw || typeof raw !== "string" || !raw.trim()) return null;
     const map = JSON.parse(raw);
     if (!map || typeof map !== "object") return null;
@@ -18,9 +18,9 @@ function getToolPermission(toolName) {
 
 const ALPHA_TOOLS = new Set(["create_role", "edit_role", "delete_role", "delete_channel", "set_channel_permissions", "create_category"]);
 
-async function checkToolAccess(toolName, member) {
+async function checkToolAccess(toolName, member, guildId) {
   if (!member) return false;
-  const perm = getToolPermission(toolName);
+  const perm = getToolPermission(toolName, guildId);
   if (!perm) {
     const modTools = new Set(["warn_member", "mute_member", "kick_member", "ban_member", "add_role", "remove_role", "purge_messages", "slowmode_set", "create_invite", "pin_message", "unpin_message"]);
     const adminTools = new Set(["create_channel"]);
@@ -691,7 +691,7 @@ async function executeTool(name, args, ctx, message) {
   try {
     switch (name) {
       case "send_message": {
-        if (!await checkToolAccess("send_message", message.member)) return "Permission denied: You need moderator permissions to send messages via AI.";
+        if (!await checkToolAccess("send_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to send messages via AI.";
         if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
         if (!args.content || typeof args.content !== "string") return `Error: Message content is required and must be a string.`;
         const sanitizedContent = validation.sanitizeString(args.content, 2000);
@@ -704,7 +704,7 @@ async function executeTool(name, args, ctx, message) {
       }
 
     case "get_channel_history": {
-      if (!await checkToolAccess("get_channel_history", message.member)) return "Permission denied: You need moderator permissions to read channel history via AI.";
+      if (!await checkToolAccess("get_channel_history", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to read channel history via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       const channel = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch channel history");
       if (!channel || channel.type !== 0) return `Error: channel ${args.channelId} is not a valid text channel.`;
@@ -765,7 +765,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "warn_member": {
-      if (!await checkToolAccess("warn_member", message.member)) return "Permission denied: You need moderator permissions to warn members via AI.";
+      if (!await checkToolAccess("warn_member", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to warn members via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!args.reason || typeof args.reason !== "string") return `Error: Reason is required and must be a string.`;
       const sanitizedReason = validation.sanitizeString(args.reason, 500);
@@ -777,7 +777,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "mute_member": {
-      if (!await checkToolAccess("mute_member", message.member)) return "Permission denied: You need moderator permissions to mute members via AI.";
+      if (!await checkToolAccess("mute_member", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to mute members via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!args.reason || typeof args.reason !== "string") return `Error: Reason is required and must be a string.`;
       const sanitizedReason = validation.sanitizeString(args.reason, 500);
@@ -792,7 +792,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "kick_member": {
-      if (!await checkToolAccess("kick_member", message.member)) return "Permission denied: You need admin permissions to kick members via AI.";
+      if (!await checkToolAccess("kick_member", message.member, message.guild?.id)) return "Permission denied: You need admin permissions to kick members via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!args.reason || typeof args.reason !== "string") return `Error: Reason is required and must be a string.`;
       const sanitizedReason = validation.sanitizeString(args.reason, 500);
@@ -806,7 +806,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "ban_member": {
-      if (!await checkToolAccess("ban_member", message.member)) return "Permission denied: You need admin permissions to ban members via AI.";
+      if (!await checkToolAccess("ban_member", message.member, message.guild?.id)) return "Permission denied: You need admin permissions to ban members via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!args.reason || typeof args.reason !== "string") return `Error: Reason is required and must be a string.`;
       const sanitizedReason = validation.sanitizeString(args.reason, 500);
@@ -820,7 +820,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "add_memory": {
-      if (!await checkToolAccess("add_memory", message.member)) return "Permission denied: You need moderator permissions to add AI memories via tools.";
+      if (!await checkToolAccess("add_memory", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to add AI memories via tools.";
       if (!args.content || typeof args.content !== "string") return `Error: Memory content is required and must be a string.`;
       const sanitizedContent = validation.sanitizeString(args.content, 500);
       if (!sanitizedContent.trim()) return `Error: Memory content is empty after sanitization.`;
@@ -949,7 +949,7 @@ async function executeTool(name, args, ctx, message) {
 
     case "list_channels": {
       if (!guild) return "Error: this tool requires a server context.";
-      if (!await checkToolAccess("list_channels", message.member)) return "Permission denied: You need moderator permissions to list channels via AI.";
+      if (!await checkToolAccess("list_channels", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to list channels via AI.";
       const textChannels = [...guild.channels.cache.values()]
         .filter(c => c.type === 0 || c.type === 5 || c.type === 15)
         .sort((a, b) => (a.rawPosition ?? 0) - (b.rawPosition ?? 0));
@@ -964,7 +964,7 @@ async function executeTool(name, args, ctx, message) {
 
     case "list_roles": {
       if (!guild) return "Error: this tool requires a server context.";
-      if (!await checkToolAccess("list_roles", message.member)) return "Permission denied: You need moderator permissions to list roles via AI.";
+      if (!await checkToolAccess("list_roles", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to list roles via AI.";
       const rolesList = [...guild.roles.cache.values()]
         .filter(r => r.name !== "@everyone")
         .sort((a, b) => b.position - a.position);
@@ -980,7 +980,7 @@ async function executeTool(name, args, ctx, message) {
 
     case "get_server_info": {
       if (!guild) return "Error: this tool requires a server context.";
-      if (!await checkToolAccess("get_server_info", message.member)) return "Permission denied: You need moderator permissions to get server info via AI.";
+      if (!await checkToolAccess("get_server_info", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to get server info via AI.";
       const owner = await safe.orNull(guild.fetchOwner(), "tool: fetch owner");
       return JSON.stringify({
         name: guild.name,
@@ -998,7 +998,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "create_invite": {
-      if (!await checkToolAccess("create_invite", message.member)) return "Permission denied: You need moderator permissions to create invites via AI.";
+      if (!await checkToolAccess("create_invite", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to create invites via AI.";
       if (args.channelId && !validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (args.maxAgeSeconds !== undefined && (!Number.isInteger(args.maxAgeSeconds) || !validation.isInRange(args.maxAgeSeconds, 0, 604800))) return `Error: maxAgeSeconds must be an integer between 0 and 604800 (1 week).`;
       if (args.maxUses !== undefined && (!Number.isInteger(args.maxUses) || !validation.isInRange(args.maxUses, 0, 100))) return `Error: maxUses must be an integer between 0 and 100.`;
@@ -1013,7 +1013,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "pin_message": {
-      if (!await checkToolAccess("pin_message", message.member)) return "Permission denied: You need moderator permissions to pin messages via AI.";
+      if (!await checkToolAccess("pin_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to pin messages via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!validation.isValidMessageId(args.messageId)) return `Error: Invalid message ID format.`;
       const pinCh = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch pin channel");
@@ -1031,7 +1031,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "unpin_message": {
-      if (!await checkToolAccess("unpin_message", message.member)) return "Permission denied: You need moderator permissions to unpin messages via AI.";
+      if (!await checkToolAccess("unpin_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to unpin messages via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!validation.isValidMessageId(args.messageId)) return `Error: Invalid message ID format.`;
       const unpinCh = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch unpin channel");
@@ -1049,7 +1049,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "add_role": {
-      if (!await checkToolAccess("add_role", message.member)) return "Permission denied: You need moderator permissions to manage roles via AI.";
+      if (!await checkToolAccess("add_role", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to manage roles via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!validation.isValidRoleId(args.roleId)) return `Error: Invalid role ID format.`;
       const addRoleMember = await safe.orNull(guild.members.fetch(args.userId), "tool: fetch member add_role");
@@ -1067,7 +1067,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "remove_role": {
-      if (!await checkToolAccess("remove_role", message.member)) return "Permission denied: You need moderator permissions to manage roles via AI.";
+      if (!await checkToolAccess("remove_role", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to manage roles via AI.";
       if (!validation.isValidUserId(args.userId)) return `Error: Invalid user ID format.`;
       if (!validation.isValidRoleId(args.roleId)) return `Error: Invalid role ID format.`;
       const remRoleMember = await safe.orNull(guild.members.fetch(args.userId), "tool: fetch member remove_role");
@@ -1085,7 +1085,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "create_channel": {
-      if (!await checkToolAccess("create_channel", message.member)) return "Permission denied: You need admin permissions to create channels via AI.";
+      if (!await checkToolAccess("create_channel", message.member, message.guild?.id)) return "Permission denied: You need admin permissions to create channels via AI.";
       if (!guild.members.me.permissions.has(PermissionFlagsBits.ManageChannels)) return "Error: bot lacks Manage Channels permission.";
       if (!args.name || typeof args.name !== "string") return `Error: Channel name is required and must be a string.`;
       const sanitizedName = validation.sanitizeString(args.name, 100).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9_-]/g, "").slice(0, 100);
@@ -1105,7 +1105,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "purge_messages": {
-      if (!await checkToolAccess("purge_messages", message.member)) return "Permission denied: You need moderator permissions to purge messages via AI.";
+      if (!await checkToolAccess("purge_messages", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to purge messages via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       const count = Math.min(Math.max(Math.floor(args.count) || 10, 1), 100);
       const purgeCh = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch purge channel");
@@ -1120,7 +1120,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "slowmode_set": {
-      if (!await checkToolAccess("slowmode_set", message.member)) return "Permission denied: You need moderator permissions to set slowmode via AI.";
+      if (!await checkToolAccess("slowmode_set", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to set slowmode via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!Number.isInteger(args.seconds) || !validation.isInRange(args.seconds, 0, 21600)) return `Error: seconds must be an integer between 0 and 21600 (6 hours).`;
       const slowCh = await safe.orNull(guild.channels.fetch(args.channelId), "tool: fetch slowmode channel");
@@ -1134,7 +1134,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "edit_message": {
-      if (!await checkToolAccess("edit_message", message.member)) return "Permission denied: You need moderator permissions to edit messages via AI.";
+      if (!await checkToolAccess("edit_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to edit messages via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!validation.isValidMessageId(args.messageId)) return `Error: Invalid message ID format.`;
       if (!args.content || typeof args.content !== "string") return `Error: Message content is required and must be a string.`;
@@ -1153,7 +1153,7 @@ async function executeTool(name, args, ctx, message) {
     }
 
     case "react_to_message": {
-      if (!await checkToolAccess("react_to_message", message.member)) return "Permission denied: You need moderator permissions to react to messages via AI.";
+      if (!await checkToolAccess("react_to_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to react to messages via AI.";
       if (!validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!validation.isValidMessageId(args.messageId)) return `Error: Invalid message ID format.`;
       if (!args.emoji || typeof args.emoji !== "string") return `Error: Emoji is required and must be a string.`;
@@ -1173,12 +1173,12 @@ async function executeTool(name, args, ctx, message) {
     case "browse_page": {
       if (!args.url || typeof args.url !== "string") return `Error: URL is required and must be a string.`;
       if (!validation.isValidUrl(args.url)) return `Error: Invalid URL format.`;
-      if (settings.get("aiBrowserEnabled") === false) return "Error: browser tool is disabled by server admin.";
+      if (settings.getForGuild("aiBrowserEnabled", message.guild?.id) === false) return "Error: browser tool is disabled by server admin.";
       return browsePage(args.url);
     }
 
     case "send_voice_message": {
-      if (!await checkToolAccess("send_voice_message", message.member)) return "Permission denied: You need moderator permissions to speak in voice channels.";
+      if (!await checkToolAccess("send_voice_message", message.member, message.guild?.id)) return "Permission denied: You need moderator permissions to speak in voice channels.";
       if (!args.channelId || !validation.isValidChannelId(args.channelId)) return `Error: Invalid channel ID format.`;
       if (!args.text || typeof args.text !== "string") return `Error: Text is required.`;
       const vm = ctx?.voiceManager;

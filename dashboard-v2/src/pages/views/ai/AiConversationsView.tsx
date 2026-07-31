@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CustomSelect } from "@/components/app/CustomSelect";
 import { History, RefreshCw, MessageSquare, Bot } from "lucide-react";
 
 interface ConversationUser {
@@ -94,41 +95,23 @@ export default function AiConversationsView() {
         <CardContent className="flex flex-wrap gap-3">
           <div>
             <label className="text-[10px] text-muted-foreground">Scope</label>
-            <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={scope} onChange={e => { setScope(e.target.value); setSelectedUser(""); setSelectedChannel(""); }}>
-              <option value="global">Global (channels)</option>
-              <option value="private">Private (DMs)</option>
-            </select>
+            <CustomSelect value={scope} onChange={value => { setScope(value); setSelectedUser(""); setSelectedChannel(""); }} options={[{ value: "global", label: "Global (channels)" }, { value: "private", label: "Private (DMs)" }]} aria-label="Conversation scope" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           {scope === "private" && (
             <div>
               <label className="text-[10px] text-muted-foreground">User</label>
-              <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={selectedUser} onChange={e => setSelectedUser(e.target.value)}>
-                <option value="">All users</option>
-                {uniqueUsers.filter(u => u.scope === "private").map(u => (
-                  <option key={u.userId} value={u.userId}>{u.displayName}</option>
-                ))}
-              </select>
+              <CustomSelect value={selectedUser} onChange={setSelectedUser} options={uniqueUsers.filter(u => u.scope === "private").map(u => ({ value: u.userId, label: u.displayName }))} allowNone noneLabel="All users" placeholder="Select user…" aria-label="Filter by user" triggerClassName="mt-1 text-xs font-mono" />
             </div>
           )}
           {scope === "global" && (
             <div>
               <label className="text-[10px] text-muted-foreground">Channel</label>
-              <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={selectedChannel} onChange={e => setSelectedChannel(e.target.value)}>
-                <option value="">All channels</option>
-                {uniqueChannels.filter(u => u.scope === "global").map(u => (
-                  <option key={u.channelId} value={u.channelId}>#{u.displayName}</option>
-                ))}
-              </select>
+              <CustomSelect value={selectedChannel} onChange={setSelectedChannel} options={uniqueChannels.filter(u => u.scope === "global").map(u => ({ value: u.channelId, label: `#${u.displayName}` }))} allowNone noneLabel="All channels" placeholder="Select channel…" aria-label="Filter by channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
           )}
           <div>
             <label className="text-[10px] text-muted-foreground">Limit</label>
-            <select className="mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={limit} onChange={e => setLimit(parseInt(e.target.value))}>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={250}>250</option>
-              <option value={500}>500</option>
-            </select>
+            <CustomSelect value={String(limit)} onChange={value => setLimit(Number.parseInt(value, 10))} options={[50, 100, 250, 500].map(value => ({ value: String(value), label: String(value) }))} aria-label="Conversation log limit" triggerClassName="mt-1 text-xs font-mono" />
           </div>
           <div className="flex-1 min-w-[200px]">
             <label className="text-[10px] text-muted-foreground">Search</label>

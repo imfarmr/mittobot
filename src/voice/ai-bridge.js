@@ -20,7 +20,8 @@ const db = require("../db");
  * @returns {Promise<{text: string, toolResults?: string}>}
  */
 async function processVoiceInput({ guildId, userId, username, transcript, guild }) {
-  if (!settings.get("aiEnabled")) {
+  const guildGet = key => settings.getForGuild(key, guildId);
+  if (!guildGet("aiEnabled")) {
     return { text: "AI is currently disabled." };
   }
 
@@ -35,7 +36,7 @@ async function processVoiceInput({ guildId, userId, username, transcript, guild 
     }
 
     // 2. Build system prompt
-    const baseSystem = settings.get("aiSystemPrompt") || "";
+    const baseSystem = guildGet("aiSystemPrompt") || "";
     const systemPrompt = [
       baseSystem,
       "",
@@ -72,7 +73,7 @@ async function processVoiceInput({ guildId, userId, username, transcript, guild 
     ];
 
     // 6. Call the provider (with fallback chain)
-    const fallbackIds = (settings.get("aiFallbackProviders") || "").split(",").map(x => x.trim()).filter(Boolean);
+    const fallbackIds = (guildGet("aiFallbackProviders") || "").split(",").map(x => x.trim()).filter(Boolean);
     const allProviderIds = [providerId, ...fallbackIds];
     let response = null;
     for (const pid of allProviderIds) {
@@ -84,9 +85,9 @@ async function processVoiceInput({ guildId, userId, username, transcript, guild 
         response = await p.chat(messages, {
           apiKey: pkey,
           model: pmodel,
-          temperature: settings.get("aiTemperature"),
-          maxTokens: settings.get("aiMaxTokens"),
-          topP: settings.get("aiTopP"),
+          temperature: guildGet("aiTemperature"),
+          maxTokens: guildGet("aiMaxTokens"),
+          topP: guildGet("aiTopP"),
           tools: [],
         });
         if (response?.text) break;

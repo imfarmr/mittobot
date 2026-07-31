@@ -11,6 +11,7 @@ import { BarChart3, Plus, Trash2, Zap, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface RoleReward { level: number; roleId: string; removePrior: boolean }
 interface LevelingConfig {
@@ -116,12 +117,18 @@ export default function LevelsView() {
             <div><label className="text-xs text-muted-foreground">Message</label><Input className="mt-1 text-xs font-mono" value={current.levelUpMessage} onChange={e => set("levelUpMessage", e.target.value)} placeholder="🎉 {user} reached level {level}!" /></div>
             <div>
               <label className="text-xs text-muted-foreground">Destination</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={current.levelUpDestination} onChange={e => set("levelUpDestination", e.target.value)}>
-                <option value="channel">Same channel as the message</option>
-                <option value="dm">Direct message</option>
-                <option value="off">Off (no announcement)</option>
-                {channels.map(c => <option key={c.id} value={`fixed:${c.id}`}>#{c.name} (fixed)</option>)}
-              </select>
+              <CustomSelect
+                value={current.levelUpDestination}
+                onChange={value => set("levelUpDestination", value)}
+                options={[
+                  { value: "channel", label: "Same channel as the message" },
+                  { value: "dm", label: "Direct message" },
+                  { value: "off", label: "Off (no announcement)" },
+                  ...channels.map(c => ({ value: `fixed:${c.id}`, label: `#${c.name} (fixed)` })),
+                ]}
+                aria-label="Level-up announcement destination"
+                triggerClassName="mt-1 text-xs font-mono"
+              />
             </div>
           </CardContent>
         </Card>
@@ -171,10 +178,16 @@ export default function LevelsView() {
               <div><label className="text-[10px] text-muted-foreground">Level</label><Input type="number" min={0} max={1000} className="text-xs font-mono" value={rw.level} onChange={e => updateReward(i, { level: parseInt(e.target.value) || 0 })} /></div>
               <div>
                 <label className="text-[10px] text-muted-foreground">Role</label>
-                <select className="w-full bg-background-alt/50 border border-border/40 rounded p-2 text-xs font-mono" value={rw.roleId} onChange={e => updateReward(i, { roleId: e.target.value })}>
-                  <option value="">— Select role —</option>
-                  {roles.map(r => <option key={r.id} value={r.id}>@{r.name}</option>)}
-                </select>
+                <CustomSelect
+                  value={rw.roleId}
+                  onChange={value => updateReward(i, { roleId: value })}
+                  options={roles.map(r => ({ value: r.id, label: `@${r.name}` }))}
+                  allowNone
+                  noneLabel="— Select role —"
+                  placeholder="Select role…"
+                  aria-label={`Role reward ${i + 1}`}
+                  triggerClassName="text-xs font-mono"
+                />
               </div>
               <Button size="sm" variant="ghost" className="text-destructive mt-4" onClick={() => removeReward(i)}><Trash2 className="size-3.5" /></Button>
             </div>

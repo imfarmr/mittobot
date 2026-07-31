@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useGuild } from "@/hooks/useGuild";
 import { guildPath } from "@/lib/api";
 import { SaveBar } from "@/components/app/SaveBar";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface GreetConfig {
   guildId: string; hasGuild: boolean; guildName: string;
@@ -123,10 +124,16 @@ export default function GreetView() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div><label className="text-xs text-muted-foreground">Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={welcomeCh} onChange={e => setWelcomeCh(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect
+                value={welcomeCh}
+                onChange={setWelcomeCh}
+                options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))}
+                allowNone
+                noneLabel="— None —"
+                placeholder="Select a channel…"
+                aria-label="Welcome channel"
+                triggerClassName="mt-1 text-xs font-mono"
+              />
             </div>
             <div><label className="text-xs text-muted-foreground">Message ({welcomeMsg.length}/1500)</label>
               <Textarea className="mt-1 text-xs font-mono h-20 resize-y" value={welcomeMsg} onChange={e => setWelcomeMsg(e.target.value.slice(0, 1500))} placeholder="Welcome {user} to {server}!" />
@@ -141,10 +148,16 @@ export default function GreetView() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div><label className="text-xs text-muted-foreground">Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={leaveCh} onChange={e => setLeaveCh(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect
+                value={leaveCh}
+                onChange={setLeaveCh}
+                options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))}
+                allowNone
+                noneLabel="— None —"
+                placeholder="Select a channel…"
+                aria-label="Leave channel"
+                triggerClassName="mt-1 text-xs font-mono"
+              />
             </div>
             <div><label className="text-xs text-muted-foreground">Message ({leaveMsg.length}/1500)</label>
               <Textarea className="mt-1 text-xs font-mono h-20 resize-y" value={leaveMsg} onChange={e => setLeaveMsg(e.target.value.slice(0, 1500))} placeholder="{user} left {server}" />
@@ -160,10 +173,16 @@ export default function GreetView() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div><label className="text-xs text-muted-foreground">Log Channel</label>
-            <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={logsCh} onChange={e => setLogsCh(e.target.value)}>
-              <option value="">— None —</option>
-              {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-            </select>
+            <CustomSelect
+              value={logsCh}
+              onChange={setLogsCh}
+              options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))}
+              allowNone
+              noneLabel="— None —"
+              placeholder="Select a channel…"
+              aria-label="Audit log channel"
+              triggerClassName="mt-1 text-xs font-mono"
+            />
           </div>
           <div className="flex items-center gap-6 pt-2">
             <label className="flex items-center gap-2 text-xs cursor-pointer">

@@ -10,6 +10,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Share2, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/app/ConfirmProvider";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 type Platform = "rss" | "youtube" | "twitch";
 
@@ -110,11 +111,7 @@ export default function SocialView() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Platform</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs" value={platform} onChange={e => setPlatform(e.target.value as Platform)}>
-                <option value="rss">RSS Feed</option>
-                <option value="youtube">YouTube</option>
-                <option value="twitch">Twitch</option>
-              </select>
+              <CustomSelect value={platform} onChange={value => setPlatform(value as Platform)} options={[{ value: "rss", label: "RSS Feed" }, { value: "youtube", label: "YouTube" }, { value: "twitch", label: "Twitch" }]} aria-label="Social platform" triggerClassName="mt-1 text-xs" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Target</label>
@@ -122,10 +119,7 @@ export default function SocialView() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Announce Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— Select —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect value={channelId} onChange={setChannelId} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— Select —" placeholder="Select channel…" aria-label="Announcement channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
           </div>
           <div>

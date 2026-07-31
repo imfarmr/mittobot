@@ -10,6 +10,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollText, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface ModlogResponse {
   entries: Array<{
@@ -83,12 +84,7 @@ export default function ModLogView() {
             <Input placeholder="Search by user ID, mod ID, reason, or action…" value={search} onChange={e => setSearch(e.target.value)} className="text-xs font-mono" />
           </div>
           <div>
-            <select className="bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={limit} onChange={e => setLimit(parseInt(e.target.value))}>
-              <option value={50}>Last 50</option>
-              <option value={100}>Last 100</option>
-              <option value={250}>Last 250</option>
-              <option value={500}>Last 500</option>
-            </select>
+            <CustomSelect value={String(limit)} onChange={value => setLimit(Number.parseInt(value, 10))} options={[50, 100, 250, 500].map(value => ({ value: String(value), label: `Last ${value}` }))} aria-label="Moderation log limit" triggerClassName="text-xs font-mono" />
           </div>
         </CardContent>
       </Card>

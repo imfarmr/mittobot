@@ -54,9 +54,8 @@ export default function Overview() {
           <p className="text-sm text-muted-foreground">{guild?.name || "Server"}</p>
         </div>
         {status?.tag && (
-          <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground">
-            <span className={`size-2 rounded-full ${status.online ? "bg-success animate-pulse" : "bg-destructive"}`} />
-            {status.tag}
+          <div className="text-xs font-mono text-muted-foreground">
+            {status.tag} · {status.ping ? `${status.ping}ms` : "—"}
           </div>
         )}
       </div>
@@ -96,15 +95,15 @@ export default function Overview() {
         <Card className="border-border/40 bg-card/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Shard Latency
+              Bot Guilds
             </CardTitle>
-            <Zap className="size-4 text-warning" />
+            <Activity className="size-4 text-warning" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight font-mono text-warning">
-              {status?.ping != null ? `${status.ping}ms` : "—"}
+              {status?.guilds != null ? status.guilds.toLocaleString() : "—"}
             </div>
-            <p className="text-[10px] text-muted-foreground font-mono mt-1">Heartbeat response time</p>
+            <p className="text-[10px] text-muted-foreground font-mono mt-1">Servers across all shards</p>
           </CardContent>
         </Card>
       </div>

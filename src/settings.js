@@ -64,6 +64,18 @@ const DEFAULTS = {
   maintenanceMessage: "🔧 The bot is currently under maintenance. Please try again later.",
 };
 
+// These options describe how AI behaves inside a server. Provider credentials,
+// model selection, and generation defaults remain global; these values can be
+// overridden independently for each guild.
+const GUILD_AI_KEYS = new Set([
+  "aiEnabled",
+  "aiSystemPrompt", "aiAllowedChannels", "aiIgnoredChannels",
+  "aiTemperature", "aiMaxTokens", "aiTopP", "aiContextLimit",
+  "aiToolsEnabled", "aiMemoryEnabled", "aiThinkingEnabled",
+  "aiKeyword", "aiFallbackProviders", "aiChattyMode", "aiChattyCooldown",
+  "aiDmEnabled", "aiBrowserEnabled", "aiPersonality", "aiToolPermissions",
+]);
+
 // Keys whose DEFAULTS type is boolean. Used both to know which rows to
 // canonicalise on write and which existing rows to scrub on load.
 const BOOLEAN_KEYS = new Set(
@@ -91,11 +103,54 @@ function canonicaliseForPersist(key, value) {
 }
 
 let _settings = { ...DEFAULTS };
+let _guildSettings = {};
+
+function guildSettingValue(key, guildId) {
+  if (!guildId || !GUILD_AI_KEYS.has(key)) return undefined;
+  return _guildSettings[String(guildId)]?.[key];
+}
+
+/** Read an AI behavior setting for a guild, falling back to the global value. */
+function getForGuild(key, guildId) {
+  const override = guildSettingValue(key, guildId);
+  return override !== undefined ? override : get(key);
+}
+
+/** Persist an AI behavior override for one guild only. */
+function setForGuild(guildId, key, value) {
+  if (!guildId || !GUILD_AI_KEYS.has(key)) return false;
+  const normalized = BOOLEAN_KEYS.has(key) && typeof value !== "boolean"
+    ? asBool(value, DEFAULTS[key])
+    : value;
+  const id = String(guildId);
+  (_guildSettings[id] ??= {})[key] = normalized;
+  db.setGuildAiSetting(id, key, canonicaliseForPersist(key, normalized))
+    .catch(e => console.error("Failed to persist guild AI setting:", e));
+  return true;
+}
+
+function getGuildSettings(guildId) {
+  const id = String(guildId || "");
+  const overrides = id ? (_guildSettings[id] || {}) : {};
+  return Object.fromEntries([...GUILD_AI_KEYS].map(key => [key, overrides[key] !== undefined ? overrides[key] : get(key)]));
+}
 
 // Async: awaited once during bot startup before any command is processed.
 async function load() {
   try {
     const saved = await db.getGlobalSettings();
+    const guildSaved = await db.getAllGuildAiSettings();
+    _guildSettings = {};
+    for (const [guildId, values] of Object.entries(guildSaved || {})) {
+      _guildSettings[guildId] = {};
+      for (const [key, value] of Object.entries(values || {})) {
+        if (GUILD_AI_KEYS.has(key)) {
+          _guildSettings[guildId][key] = BOOLEAN_KEYS.has(key)
+            ? asBool(value, DEFAULTS[key])
+            : value;
+        }
+      }
+    }
     _settings = { ...DEFAULTS, ...saved };
     // Normalise every boolean-keyed row to a real JS boolean, regardless of
     // how it ended up in the DB ("true"/"false" canonical, "1"/"0"/1/0 legacy).
@@ -119,6 +174,7 @@ async function load() {
   } catch (e) {
     console.error("Failed to load settings from db:", e);
     _settings = { ...DEFAULTS };
+    _guildSettings = {};
   }
 }
 
@@ -196,6 +252,10 @@ module.exports = {
   get,
   set,
   getAll,
+  getForGuild,
+  getGuildSettings,
+  setForGuild,
+  GUILD_AI_KEYS,
   DEFAULTS,
   AI_SYSTEM_PROMPT_DEFAULT,
   AI_SYSTEM_PROMPT_CONCISE,

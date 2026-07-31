@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface SuggestionsConfig {
   enabled: boolean;
@@ -129,10 +130,7 @@ export default function SuggestionsView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-muted-foreground">Board Channel</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={channelId} onChange={e => setChannelId(e.target.value)}>
-                <option value="">— None —</option>
-                {data.channels.map(c => <option key={c.id} value={c.id}>#{c.name}</option>)}
-              </select>
+              <CustomSelect value={channelId} onChange={setChannelId} options={data.channels.map(c => ({ value: c.id, label: `#${c.name}` }))} allowNone noneLabel="— None —" placeholder="Select channel…" aria-label="Suggestions board channel" triggerClassName="mt-1 text-xs font-mono" />
             </div>
           </div>
           <div className="flex items-center gap-6 pt-2 flex-wrap">

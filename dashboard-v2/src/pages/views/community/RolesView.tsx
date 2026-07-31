@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { UserCheck, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 interface RolesData {
   guildId: string; hasGuild: boolean; guildName: string;
@@ -96,10 +97,7 @@ export default function RolesView() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <select className="flex-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={newAutorole} onChange={e => setNewAutorole(e.target.value)}>
-              <option value="">— Select role —</option>
-              {data.roles.filter(r => !currentAutoroles.includes(r.id)).map(r => <option key={r.id} value={r.id}>@{r.name}</option>)}
-            </select>
+            <CustomSelect value={newAutorole} onChange={setNewAutorole} options={data.roles.filter(r => !currentAutoroles.includes(r.id)).map(r => ({ value: r.id, label: `@${r.name}` }))} allowNone noneLabel="— Select role —" placeholder="Select role…" aria-label="Autorole" triggerClassName="flex-1 text-xs font-mono" />
             <Button size="sm" disabled={!newAutorole} onClick={handleAddAutorole}>
               <Plus className="size-3.5 mr-1" /> Add
             </Button>

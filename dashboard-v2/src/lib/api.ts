@@ -1,10 +1,8 @@
 // ─── API client ──────────────────────────────────────────────────────────────
-// Same contract as dashboard v1: VITE_BOT_API_URL base (empty in dev — the
-// Vite proxy forwards /api and /login), Bearer JWT from localStorage under
-// the same "ggboi_token" key so existing sessions carry over to v2.
+// Bearer JWT from localStorage under the "mitto_token" key.
 
 export const BASE = import.meta.env.VITE_BOT_API_URL || "";
-const TOKEN_KEY = "ggboi_token";
+const TOKEN_KEY = "mitto_token";
 
 export function getToken(): string {
   return localStorage.getItem(TOKEN_KEY) || "";

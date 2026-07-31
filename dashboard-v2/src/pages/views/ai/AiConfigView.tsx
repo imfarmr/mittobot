@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { get, post } from "@/lib/api";
+import { get, post, guildPath } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 import { SaveBar } from "@/components/app/SaveBar";
+import { useGuild } from "@/hooks/useGuild";
+import { CustomSelect } from "@/components/app/CustomSelect";
 
 const PROVIDER_META: Record<string, { label: string; keyField: string; modelField: string; models: string[] }> = {
   groq: { label: "Groq", keyField: "groqApiKey", modelField: "groqModel", models: ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"] },
@@ -22,6 +24,7 @@ const PROVIDER_META: Record<string, { label: string; keyField: string; modelFiel
 
 export default function AiConfigView() {
   const queryClient = useQueryClient();
+  const { guildId, guild } = useGuild();
   // edits stores NATIVE types (number | boolean | string) so the save payload
   // matches what ai.js updateSettings type-gates on: numeric settings require
   // `typeof === "number"`, booleans `typeof === "boolean"`. The previous
@@ -30,19 +33,25 @@ export default function AiConfigView() {
   const [edits, setEdits] = useState<Record<string, string | number | boolean>>({});
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
 
-  const { data, isLoading } = useQuery<any>({ queryKey: ["ai"], queryFn: () => get("/api/ai") });
+  const { data, isLoading, isError } = useQuery<any>({
+    queryKey: ["ai", guildId],
+    queryFn: () => get(guildPath("/api/ai", guildId)),
+    enabled: !!guildId,
+  });
 
   const saveMutation = useMutation({
-    mutationFn: (body: any) => post("/api/ai", body),
+    mutationFn: (body: any) => post("/api/ai", { ...body, guildId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["ai"] });
+      queryClient.invalidateQueries({ queryKey: ["ai", guildId] });
       setEdits({});
       toast.success("AI config saved");
     },
     onError: (e: any) => toast.error(e.message || "Save failed"),
   });
 
+  if (!guildId) return <div className="p-6 text-sm text-muted-foreground">Select a server first.</div>;
   if (isLoading || !data) return <div className="p-6 text-sm text-muted-foreground">Loading AI config...</div>;
+  if (isError) return <div className="p-6 text-sm text-destructive">Unable to load AI settings for this server.</div>;
 
   const provider = data.aiProvider || "groq";
   const meta = PROVIDER_META[provider] || PROVIDER_META.groq;
@@ -88,6 +97,9 @@ export default function AiConfigView() {
 
   return (
     <div className="space-y-4">
+      <div className="mb-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">{guild?.name || "This server"}</span> · AI behavior changes on this page apply only to the selected server. Provider credentials and model defaults remain shared.
+      </div>
       <SaveBar dirty={dirty} saving={saveMutation.isPending} onSave={handleSave} onReset={handleReset} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -96,9 +108,14 @@ export default function AiConfigView() {
           <CardHeader><CardTitle className="text-sm font-semibold">Provider</CardTitle><CardDescription className="text-xs">Which AI backend to use</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <div><label className="text-xs text-muted-foreground">Active Provider</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={current("aiProvider")} onChange={e => set("aiProvider", e.target.value)}>
-                {Object.entries(PROVIDER_META).map(([id, m]) => <option key={id} value={id}>{m.label}</option>)}
-              </select>
+              <CustomSelect
+                value={current("aiProvider")}
+                onChange={value => set("aiProvider", value)}
+                options={Object.entries(PROVIDER_META).map(([id, m]) => ({ value: id, label: m.label }))}
+                placeholder="Select provider…"
+                aria-label="Active AI provider"
+                triggerClassName="mt-1 text-xs font-mono"
+              />
             </div>
             <div><label className="text-xs text-muted-foreground">API Key ({meta.label})</label>
               <div className="relative mt-1">
@@ -110,13 +127,14 @@ export default function AiConfigView() {
             </div>
             <div><label className="text-xs text-muted-foreground">Model</label>
               <div className="flex gap-2 mt-1">
-                <select className="flex-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={current(meta.modelField)} onChange={e => set(meta.modelField, e.target.value)}>
-                  {/* Prefer the live model list from GET /api/ai (fetched by
-                      getPublicSettingsAsync when the provider key is set);
-                      fall back to PROVIDER_META's static list when no key is
-                      configured so the dropdown is never empty. */}
-                  {(Array.isArray(data.models) && data.models.length ? data.models : meta.models).map((m: string) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <CustomSelect
+                  value={current(meta.modelField)}
+                  onChange={value => set(meta.modelField, value)}
+                  options={(Array.isArray(data.models) && data.models.length ? data.models : meta.models).map((m: string) => ({ value: m, label: m }))}
+                  placeholder="Select model…"
+                  aria-label={`${meta.label} model`}
+                  triggerClassName="flex-1 text-xs font-mono"
+                />
                 <Input className="w-1/3 font-mono text-xs" value={current(meta.modelField)} onChange={e => set(meta.modelField, e.target.value)} placeholder="Custom model" />
               </div>
             </div>
@@ -126,10 +144,14 @@ export default function AiConfigView() {
                   <Input className="mt-1 font-mono text-xs" value={current("customBaseUrl")} onChange={e => set("customBaseUrl", e.target.value)} placeholder="https://api.example.com/" />
                 </div>
                 <div><label className="text-xs text-muted-foreground">API Type</label>
-                  <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={current("customApiType")} onChange={e => set("customApiType", e.target.value)}>
-                    <option value="openai">OpenAI-compatible</option>
-                    <option value="anthropic">Anthropic-compatible</option>
-                  </select>
+                  <CustomSelect
+                    value={current("customApiType")}
+                    onChange={value => set("customApiType", value)}
+                    options={[{ value: "openai", label: "OpenAI-compatible" }, { value: "anthropic", label: "Anthropic-compatible" }]}
+                    placeholder="Select API type…"
+                    aria-label="Custom API type"
+                    triggerClassName="mt-1 text-xs font-mono"
+                  />
                 </div>
               </>
             )}
@@ -209,13 +231,14 @@ export default function AiConfigView() {
               <Input className="mt-1 font-mono text-xs" value={current("aiChattyCooldown")} onChange={e => set("aiChattyCooldown", e.target.value)} placeholder="60" />
             </div>
             <div><label className="text-xs text-muted-foreground">Personality</label>
-              <select className="w-full mt-1 bg-background-alt/50 border border-border/40 rounded-lg p-2 text-xs font-mono" value={current("aiPersonality")} onChange={e => set("aiPersonality", e.target.value)}>
-                <option value="neutral">Neutral</option>
-                <option value="playful">Playful</option>
-                <option value="serious">Serious</option>
-                <option value="warm">Warm</option>
-                <option value="quirky">Quirky</option>
-              </select>
+              <CustomSelect
+                value={current("aiPersonality")}
+                onChange={value => set("aiPersonality", value)}
+                options={["neutral", "playful", "serious", "warm", "quirky"].map(value => ({ value, label: value[0].toUpperCase() + value.slice(1) }))}
+                placeholder="Select personality…"
+                aria-label="AI personality"
+                triggerClassName="mt-1 text-xs font-mono"
+              />
             </div>
             <div><label className="text-xs text-muted-foreground">Fallback Providers</label>
               <Input className="mt-1 font-mono text-xs" value={current("aiFallbackProviders")} onChange={e => set("aiFallbackProviders", e.target.value)} placeholder="e.g. openai, claude" />

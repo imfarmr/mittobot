@@ -35,12 +35,11 @@ export function SaveBar({ dirty, saving, onSave, onReset }: SaveBarProps) {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
             transition={{ type: "spring", stiffness: 450, damping: 30 }}
-            className="pointer-events-auto flex w-full max-w-xl items-center justify-between gap-4 rounded-xl border border-border bg-card/95 px-5 py-3 shadow-lg backdrop-blur-md"
+            className="pointer-events-auto flex w-full max-w-xl items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card/95 px-5 py-3 shadow-2xl backdrop-blur-2xl"
           >
             <div className="flex items-center gap-2.5">
-              <span className="size-2 rounded-full bg-warning animate-pulse shrink-0" />
               <span className="text-xs font-semibold tracking-wide text-foreground">
-                Careful — you have unsaved changes!
+                You have unsaved changes
               </span>
             </div>
 
@@ -51,7 +50,7 @@ export function SaveBar({ dirty, saving, onSave, onReset }: SaveBarProps) {
                   size="sm"
                   onClick={onReset}
                   disabled={saving}
-                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                  className="h-8 text-xs"
                 >
                   <Undo2 className="size-3.5 mr-1" /> Reset
                 </Button>
@@ -60,7 +59,7 @@ export function SaveBar({ dirty, saving, onSave, onReset }: SaveBarProps) {
                 size="sm"
                 onClick={onSave}
                 disabled={saving}
-                className="h-8 text-xs font-semibold px-4 bg-[#23A55A] hover:bg-[#1a7f45] text-white"
+                className="h-8 text-xs font-semibold px-4"
               >
                 {saving ? (
                   <Loader2 className="size-3.5 animate-spin mr-1" />

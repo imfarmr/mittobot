@@ -9,6 +9,13 @@ import { Toaster } from "sonner";
 import App from "./App";
 import "./index.css";
 
+// Apply the saved performance preference before React mounts so heavy glass
+// effects do not flash briefly on slower devices during the first paint.
+if (window.localStorage.getItem("mitto_performance_mode") === "true") {
+  document.documentElement.classList.add("performance-mode");
+  document.body.classList.add("performance-mode");
+}
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>

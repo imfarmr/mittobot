@@ -12,7 +12,7 @@ export default function LandingPage() {
             <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
               <Terminal className="size-5 text-primary" />
             </div>
-            <span className="font-semibold text-lg tracking-tight">ggboi</span>
+            <span className="font-semibold text-lg tracking-tight">Mitto</span>
           </div>
           <nav className="flex items-center gap-6">
             <Link to="/docs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
@@ -29,13 +29,13 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <main className="flex-1 flex flex-col items-center justify-center text-center px-4 max-w-4xl mx-auto py-20">
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 animate-pulse">
+        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-4 py-1.5 text-xs font-semibold mb-6">
           <Sparkles className="size-3.5" />
-          ggboi Dashboard v2 is now live
+          Mitto Dashboard v2 is now live
         </div>
 
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
-          The ultimate control deck for <span className="text-primary">ggboi</span>
+          The ultimate control deck for <span className="text-primary">Mitto</span>
         </h1>
 
         <p className="text-muted-foreground text-lg max-w-2xl mb-8">
@@ -93,7 +93,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border/20 py-8">
         <div className="max-w-7xl mx-auto px-4 text-center text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} ggboi. All rights reserved. Designed for flight-deck telemetry.
+          &copy; {new Date().getFullYear()} Mitto. All rights reserved.
         </div>
       </footer>
     </div>

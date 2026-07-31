@@ -2,7 +2,7 @@ import { useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Menu, Terminal, LogOut, ChevronDown, ChevronRight,
-  Home, Activity, Settings, Blocks, Database, FlaskConical, LayoutDashboard, Cpu,
+  Home, Activity, Settings, Blocks, Database, FlaskConical, LayoutDashboard, Cpu, UserRound,
   // Moderation icons
   ShieldAlert, ShieldBan, Flame, FolderOpen, ScrollText, StickyNote, Zap,
   // Community icons
@@ -16,10 +16,14 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import AccountSettingsPage from "@/pages/AccountSettingsPage";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
 import { useGuild } from "@/hooks/useGuild";
+import { usePerformanceMode } from "@/hooks/usePerformanceMode";
+import { useCustomBackground } from "@/hooks/useCustomBackground";
 import { avatarUrl, guildIconUrl, guildAcronym } from "@/lib/utils";
 
 interface NavItem {
@@ -37,6 +41,10 @@ interface NavSection {
 export default function AppShell() {
   const { user, guilds, logout } = useAuth();
   const { guildId, guild } = useGuild();
+  // Apply the persisted visual preference for every dashboard route, even
+  // before the account modal (where it can be changed) is opened.
+  usePerformanceMode();
+  const { backgroundImage, backgroundOpacity } = useCustomBackground();
   const navigate = useNavigate();
   const location = useLocation();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
@@ -45,6 +53,7 @@ export default function AppShell() {
     engagement: true,
     ai: true,
   });
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const toggleSection = (id: string) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -58,7 +67,7 @@ export default function AppShell() {
       label: "Moderation",
       items: [
         { label: "Automod", path: `/g/${guildId}/moderation/automod`, icon: ShieldAlert },
-        { label: "Automod v2", path: `/g/${guildId}/moderation/automodv2`, icon: Sparkles },
+
         { label: "Anti-raid", path: `/g/${guildId}/moderation/antiraid`, icon: ShieldBan },
         { label: "Dangerzone", path: `/g/${guildId}/moderation/dangerzone`, icon: Flame },
         { label: "Cases", path: `/g/${guildId}/moderation/cases`, icon: FolderOpen },
@@ -125,9 +134,8 @@ export default function AppShell() {
     <div className="flex flex-col h-full bg-sidebar">
       {/* Brand — no ping */}
       <div className="h-14 border-b border-sidebar-border px-5 flex items-center gap-2.5 shrink-0">
-        <Terminal className="size-5 text-primary" />
-        <span className="font-semibold text-foreground tracking-tight text-base">ggboi</span>
-        <span className="status-dot ml-auto" />
+        <Terminal className="size-5 text-primary" />            <span className="font-semibold text-foreground tracking-tight text-base">Mitto</span>
+
       </div>
 
       {/* Navigation */}
@@ -179,8 +187,8 @@ export default function AppShell() {
                 <NavLink
                   to={`/g/${guildId}/overview`}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
-                      isActive ? "bg-primary/10 text-primary" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      isActive ? "bg-accent text-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
                 >
@@ -190,8 +198,8 @@ export default function AppShell() {
                 <NavLink
                   to={`/g/${guildId}/commands`}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
-                      isActive ? "bg-primary/10 text-primary" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      isActive ? "bg-accent text-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
                 >
@@ -202,7 +210,7 @@ export default function AppShell() {
             ) : (
               <Link
                 to={guildId ? `/g/${guildId}/overview` : "/servers"}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                className="flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
               >
                 <ArrowLeft className="size-4" />
                 Back to Guild
@@ -229,9 +237,9 @@ export default function AppShell() {
                           key={item.path}
                           to={item.path}
                           className={({ isActive }) =>
-                            `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            `flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                               isActive
-                                ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
+                                ? "bg-accent text-accent-foreground"
                                 : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                             }`
                           }
@@ -255,9 +263,9 @@ export default function AppShell() {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    `flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       isActive
-                        ? "bg-sidebar-accent text-primary border-l-2 border-primary pl-[10px]"
+                        ? "bg-accent text-accent-foreground"
                         : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                     }`
                   }
@@ -273,35 +281,63 @@ export default function AppShell() {
 
       {/* User footer */}
       {user && (
-        <div className="h-14 border-t border-sidebar-border px-4 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 truncate">
-            <img src={avatarUrl(user)} alt="" className="size-7 rounded-full border border-sidebar-border bg-background shrink-0" referrerPolicy="no-referrer" />
-            <div className="truncate min-w-0">
-              <div className="text-xs font-semibold text-foreground truncate">{user.tag}</div>
-              <div className={`text-[9px] uppercase font-bold tracking-wider ${user.isOwner ? "text-primary" : "text-muted-foreground"}`}>
-                {user.isOwner ? "Owner" : "Admin"}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex h-14 w-full items-center gap-2 border-t border-sidebar-border px-4 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+              aria-label="Open account menu"
+            >
+              <img src={avatarUrl(user)} alt="" className="size-7 rounded-full border border-sidebar-border bg-background shrink-0" referrerPolicy="no-referrer" />
+              <div className="truncate min-w-0 flex-1">
+                <div className="text-xs font-semibold text-foreground truncate">{user.tag}</div>
+                <div className={`text-[9px] uppercase font-bold tracking-wider ${user.isOwner ? "text-primary" : "text-muted-foreground"}`}>
+                  {user.isOwner ? "Owner" : "Admin"}
+                </div>
               </div>
+              <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end" className="w-56 border-sidebar-border bg-card">
+            <div className="px-2.5 py-2">
+              <p className="truncate text-xs font-semibold">{user.tag}</p>
+              <p className="truncate font-mono text-[10px] text-muted-foreground">{user.id}</p>
             </div>
-          </div>
-          <div className="flex items-center gap-0.5 shrink-0">
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                setAccountOpen(true);
+              }}
+              className="cursor-pointer gap-2 text-xs"
+            >
+              <UserRound className="size-3.5" /> Account settings
+            </DropdownMenuItem>
             {user.isOwner && (
-              <NavLink to="/system/status">
-                <Button variant="ghost" size="icon" className={`size-7 text-muted-foreground hover:text-foreground ${isSystemRoute ? "text-primary" : ""}`} title="System">
-                  <Cpu className="size-3.5" />
-                </Button>
-              </NavLink>
+              <DropdownMenuItem onClick={() => navigate("/system/status")} className="cursor-pointer gap-2 text-xs">
+                <Cpu className="size-3.5" /> System status
+              </DropdownMenuItem>
             )}
-            <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={logout} title="Log out">
-              <LogOut className="size-3.5" />
-            </Button>
-          </div>
-        </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} className="cursor-pointer gap-2 text-xs text-destructive focus:text-destructive">
+              <LogOut className="size-3.5" /> Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
     </div>
   );
 
   return (
-    <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
+    <div className="relative isolate h-screen bg-transparent flex flex-col md:flex-row overflow-hidden">
+      {backgroundImage && (
+        <div
+          aria-hidden="true"
+          className="custom-background-layer pointer-events-none fixed inset-0 z-[-1] bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url(${JSON.stringify(backgroundImage)})`, opacity: backgroundOpacity }}
+        />
+      )}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[-1] bg-black/45" />
+
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 h-full border-r border-sidebar-border bg-sidebar">
         {renderSidebarContent()}
@@ -320,7 +356,7 @@ export default function AppShell() {
               {renderSidebarContent()}
             </SheetContent>
           </Sheet>
-          <span className="font-semibold text-foreground tracking-tight text-sm">ggboi</span>
+          <span className="font-semibold text-foreground tracking-tight text-sm">Mitto</span>
           <span className="text-[10px] text-muted-foreground font-mono truncate max-w-28">
             {isSystemRoute ? "System" : (guild?.name || "")}
           </span>
@@ -331,6 +367,12 @@ export default function AppShell() {
       <main className="flex-1 min-w-0 overflow-y-auto h-full">
         <Outlet />
       </main>
+
+      <Dialog open={accountOpen} onOpenChange={setAccountOpen}>
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+          <AccountSettingsPage onClose={() => setAccountOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
