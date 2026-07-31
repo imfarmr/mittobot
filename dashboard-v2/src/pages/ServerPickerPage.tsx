@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Users, Hash, ShieldCheck, Crown, Server, ArrowRight, Search, Shield } from "lucide-react";
+import { LogOut, Users, Hash, MessageSquare, Volume2, Radio, ShieldCheck, Crown, Server, ArrowRight, Search, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,8 +26,8 @@ export default function ServerPickerPage() {
       <header className="border-b border-border/40 bg-card/50 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
-              <Server className="size-5 text-primary" />
+            <div className="size-9 overflow-hidden rounded-xl border border-primary/20 bg-primary/10 shadow-sm">
+              <img src="/emojinobg.png" alt="Mitto" className="size-full object-cover" />
             </div>
             <span className="font-semibold text-lg tracking-tight">Mitto</span>
             <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded font-mono">
@@ -177,21 +177,23 @@ export default function ServerPickerPage() {
                         <CardTitle className="text-base font-bold truncate group-hover:text-primary transition-colors">
                           {g.name}
                         </CardTitle>
-                        <CardDescription className="font-mono text-xs flex items-center gap-3 mt-1.5">
-                          <span className="flex items-center gap-1">
-                            <Users className="size-3.5" />
-                            {g.memberCount?.toLocaleString() || "0"}
-                          </span>
-                          <span>·</span>
-                          <span className="flex items-center gap-1">
-                            <Hash className="size-3.5" />
-                            {g.channelCount || "0"} ch
-                          </span>
-                          <span>·</span>
-                          <span className="flex items-center gap-1">
-                            <Shield className="size-3.5" />
-                            {g.roleCount || "0"} roles
-                          </span>
+                        <CardDescription className="mt-2 space-y-1.5 text-xs">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono">
+                            <span className="flex items-center gap-1" title="Members">
+                              <Users className="size-3.5" /> {g.memberCount?.toLocaleString() || "0"}
+                            </span>
+                            <span className="flex items-center gap-1" title="Total channels">
+                              <Hash className="size-3.5" /> {g.channelCount ?? 0} total
+                            </span>
+                            <span className="flex items-center gap-1" title="Roles">
+                              <Shield className="size-3.5" /> {g.roleCount || "0"} roles
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground/80">
+                            <span className="flex items-center gap-1"><MessageSquare className="size-3" /> {g.channelCounts?.text ?? 0} text</span>
+                            <span className="flex items-center gap-1"><Volume2 className="size-3" /> {g.channelCounts?.voice ?? 0} voice</span>
+                            <span className="flex items-center gap-1"><Radio className="size-3" /> {g.channelCounts?.stage ?? 0} stage</span>
+                          </div>
                         </CardDescription>
                       </div>
                       <ArrowRight className="size-5 text-muted-foreground group-hover:text-primary transition-all group-hover:translate-x-1" />

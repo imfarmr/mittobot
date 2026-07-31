@@ -15,7 +15,36 @@ export interface Guild {
   icon: string | null;
   memberCount?: number;
   channelCount?: number;
+  channelCounts?: { text: number; voice: number; stage: number };
   roleCount?: number;
+  accessTier?: "none" | "viewer" | "manager" | "security-admin";
+  canManageAccess?: boolean;
+  nativeAdmin?: boolean;
+  readOnlyMode?: boolean;
+}
+
+export interface DashboardAccessPolicy {
+  guildId: string;
+  viewerRoles: string[];
+  managerRoles: string[];
+  securityAdminRoles: string[];
+  accessEnabled: boolean;
+  readOnlyMode: boolean;
+  showAuditLogs: boolean;
+  updatedBy: string | null;
+  updatedAt: number;
+}
+
+export interface DashboardAccessRole {
+  id: string;
+  name: string;
+  color?: number;
+  position?: number;
+}
+
+export interface AiPermissions {
+  canEdit: boolean;
+  canEditProvider: boolean;
 }
 
 export interface BotStatus {

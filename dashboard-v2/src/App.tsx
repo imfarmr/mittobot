@@ -15,8 +15,9 @@ const EngagementHub = React.lazy(() => import("@/pages/EngagementHub"));
 const AiHub = React.lazy(() => import("@/pages/AiHub"));
 const CommandsPage = React.lazy(() => import("@/pages/CommandsPage"));
 const SystemHub = React.lazy(() => import("@/pages/SystemHub"));
+const ServerAccessView = React.lazy(() => import("@/pages/views/system/ServerAccessView"));
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+function PrivateRoute({ children, ownerOnly = false }: { children: React.ReactNode; ownerOnly?: boolean }) {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -30,6 +31,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (ownerOnly && !user.isOwner) {
+    return <Navigate to="/servers" replace />;
   }
 
   return <>{children}</>;
@@ -106,8 +111,16 @@ export default function App() {
         <Route
           path="commands"
           element={
-            <Suspense fallback={<LoadingFallback text="If u see this dm me on discord with 'sendmemorepinterestart'"/>}>
+            <Suspense fallback={<LoadingFallback text="Loading..." />}>
               <CommandsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="access"
+          element={
+            <Suspense fallback={<LoadingFallback text="Loading server access..." />}>
+              <ServerAccessView />
             </Suspense>
           }
         />
@@ -117,7 +130,7 @@ export default function App() {
       <Route
         path="/system/*"
         element={
-          <PrivateRoute>
+          <PrivateRoute ownerOnly>
             <AppShell />
           </PrivateRoute>
         }

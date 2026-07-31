@@ -86,9 +86,13 @@ export default function Overview() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight font-mono">
-              {meta?.channels?.length ?? "—"}
+              {meta?.channelTotal ?? meta?.channels?.length ?? "—"}
             </div>
-            <p className="text-[10px] text-muted-foreground font-mono mt-1">Text, voice, and stages</p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground font-mono">
+              <span>Text {meta?.channelCounts?.text ?? 0}</span>
+              <span>Voice {meta?.channelCounts?.voice ?? 0}</span>
+              <span>Stage {meta?.channelCounts?.stage ?? 0}</span>
+            </div>
           </CardContent>
         </Card>
 

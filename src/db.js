@@ -68,6 +68,20 @@ function init() {
     );
     CREATE INDEX IF NOT EXISTS guild_ai_settings_guild ON guild_ai_settings (guild_id);
 
+    -- Per-guild dashboard access policy. Role IDs are Discord role IDs stored
+    -- as JSON arrays so each tier can be changed without a schema migration.
+    CREATE TABLE IF NOT EXISTS guild_dashboard_access (
+      guild_id              TEXT PRIMARY KEY,
+      viewer_roles          TEXT NOT NULL DEFAULT '[]',
+      manager_roles         TEXT NOT NULL DEFAULT '[]',
+      security_admin_roles  TEXT NOT NULL DEFAULT '[]',
+      access_enabled        INTEGER NOT NULL DEFAULT 1,
+      read_only_mode        INTEGER NOT NULL DEFAULT 0,
+      show_audit_logs       INTEGER NOT NULL DEFAULT 1,
+      updated_by            TEXT,
+      updated_at            INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS dashboard_audit_log (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       guild_id   TEXT,
@@ -112,8 +126,14 @@ function init() {
       leave_message       TEXT,
       logs_enabled        INTEGER DEFAULT 0,
       logs_channel_id     TEXT,
-      logs_member_events  INTEGER DEFAULT 1,
-      logs_message_events INTEGER DEFAULT 1
+      logs_member_events      INTEGER DEFAULT 1,
+      logs_message_events     INTEGER DEFAULT 1,
+      logs_server_events      INTEGER DEFAULT 1,
+      logs_moderation_events  INTEGER DEFAULT 1,
+      logs_voice_events       INTEGER DEFAULT 1,
+      logs_invite_events      INTEGER DEFAULT 1,
+      logs_thread_events      INTEGER DEFAULT 1,
+      logs_bulk_message_events INTEGER DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS roles_config (
@@ -649,6 +669,14 @@ function init() {
 
   // Migrations for columns added after initial table creation
   try { db.exec("ALTER TABLE moderation_log ADD COLUMN proof TEXT"); } catch { /* column already exists */ }
+  // Server logger category toggles. Existing rows default to enabled so adding
+  // these controls never silently disables logging for an existing guild.
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_server_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_moderation_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_voice_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_invite_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_thread_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
+  try { db.exec("ALTER TABLE greet_config ADD COLUMN logs_bulk_message_events INTEGER DEFAULT 1"); } catch { /* column already exists */ }
   try { db.exec("ALTER TABLE ai_conversations ADD COLUMN guild_id TEXT DEFAULT 'dm'"); } catch { /* column already exists */ }
   try { db.exec("ALTER TABLE ai_conversations ADD COLUMN scope TEXT DEFAULT 'private'"); } catch { /* column already exists */ }
   try { db.exec("ALTER TABLE ai_conversations ADD COLUMN channel_id TEXT"); } catch { /* column already exists */ }
@@ -776,6 +804,92 @@ async function deleteGuildAiSetting(guildId, key) {
     .run(String(guildId), String(key));
 }
 
+// ── Dashboard access policy ──────────────────────────────────────────────
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeDashboardAccessRow(row) {
+  return {
+    guildId: String(row.guild_id),
+    viewerRoles: parseJsonArray(row.viewer_roles),
+    managerRoles: parseJsonArray(row.manager_roles),
+    securityAdminRoles: parseJsonArray(row.security_admin_roles),
+    accessEnabled: row.access_enabled !== 0,
+    readOnlyMode: row.read_only_mode === 1,
+    showAuditLogs: row.show_audit_logs !== 0,
+    updatedBy: row.updated_by || null,
+    updatedAt: Number(row.updated_at || 0),
+  };
+}
+
+function defaultDashboardAccess(guildId) {
+  return {
+    guildId: String(guildId),
+    viewerRoles: [],
+    managerRoles: [],
+    securityAdminRoles: [],
+    accessEnabled: true,
+    readOnlyMode: false,
+    showAuditLogs: true,
+    updatedBy: null,
+    updatedAt: 0,
+  };
+}
+
+function getDashboardAccess(guildId) {
+  const row = db.prepare("SELECT * FROM guild_dashboard_access WHERE guild_id = ?").get(String(guildId));
+  return row ? normalizeDashboardAccessRow(row) : defaultDashboardAccess(guildId);
+}
+
+function getAllDashboardAccess() {
+  return query("SELECT * FROM guild_dashboard_access").map(normalizeDashboardAccessRow);
+}
+
+function setDashboardAccess(guildId, cfg, updatedBy = null) {
+  const cleanIds = value => [...new Set((Array.isArray(value) ? value : []).map(String).filter(id => /^\d{17,20}$/.test(id)))].slice(0, 50);
+  const viewerRoles = cleanIds(cfg.viewerRoles);
+  const managerRoles = cleanIds(cfg.managerRoles);
+  const securityAdminRoles = cleanIds(cfg.securityAdminRoles);
+  const accessEnabled = cfg.accessEnabled !== false ? 1 : 0;
+  const readOnlyMode = cfg.readOnlyMode === true ? 1 : 0;
+  const showAuditLogs = cfg.showAuditLogs !== false ? 1 : 0;
+  const now = Date.now();
+
+  db.prepare(`
+    INSERT INTO guild_dashboard_access
+      (guild_id, viewer_roles, manager_roles, security_admin_roles,
+       access_enabled, read_only_mode, show_audit_logs, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      viewer_roles = excluded.viewer_roles,
+      manager_roles = excluded.manager_roles,
+      security_admin_roles = excluded.security_admin_roles,
+      access_enabled = excluded.access_enabled,
+      read_only_mode = excluded.read_only_mode,
+      show_audit_logs = excluded.show_audit_logs,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(
+    String(guildId),
+    JSON.stringify(viewerRoles),
+    JSON.stringify(managerRoles),
+    JSON.stringify(securityAdminRoles),
+    accessEnabled,
+    readOnlyMode,
+    showAuditLogs,
+    updatedBy ? String(updatedBy) : null,
+    now,
+  );
+
+  return getDashboardAccess(guildId);
+}
+
 // ── Command config ───────────────────────────────────────────────────────
 async function getAllCommandConfigs() {
   return query("SELECT * FROM command_config");
@@ -825,7 +939,7 @@ async function getDashboardAudit(guildId, limit = 50) {
     return query(`
       SELECT id, guild_id, actor_id, actor_tag, action, target, created_at
       FROM dashboard_audit_log
-      WHERE guild_id = ? OR guild_id IS NULL
+      WHERE guild_id = ?
       ORDER BY created_at DESC
       LIMIT ?
     `, [guildId, safeLimit]);
@@ -873,8 +987,10 @@ async function setGreetConfig(guildId, cfg) {
     INSERT INTO greet_config
        (guild_id, welcome_enabled, welcome_channel_id, welcome_message,
         leave_enabled, leave_channel_id, leave_message,
-        logs_enabled, logs_channel_id, logs_member_events, logs_message_events)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        logs_enabled, logs_channel_id, logs_member_events, logs_message_events,
+        logs_server_events, logs_moderation_events, logs_voice_events,
+        logs_invite_events, logs_thread_events, logs_bulk_message_events)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(guild_id) DO UPDATE SET
       welcome_enabled = excluded.welcome_enabled,
       welcome_channel_id = excluded.welcome_channel_id,
@@ -885,7 +1001,13 @@ async function setGreetConfig(guildId, cfg) {
       logs_enabled = excluded.logs_enabled,
       logs_channel_id = excluded.logs_channel_id,
       logs_member_events = excluded.logs_member_events,
-      logs_message_events = excluded.logs_message_events
+      logs_message_events = excluded.logs_message_events,
+      logs_server_events = excluded.logs_server_events,
+      logs_moderation_events = excluded.logs_moderation_events,
+      logs_voice_events = excluded.logs_voice_events,
+      logs_invite_events = excluded.logs_invite_events,
+      logs_thread_events = excluded.logs_thread_events,
+      logs_bulk_message_events = excluded.logs_bulk_message_events
   `).run(
     guildId,
     cfg.welcome_enabled ? 1 : 0,
@@ -896,8 +1018,14 @@ async function setGreetConfig(guildId, cfg) {
     cfg.leave_message || null,
     cfg.logs_enabled ? 1 : 0,
     cfg.logs_channel_id || null,
-    cfg.logs_member_events ? 1 : 0,
-    cfg.logs_message_events ? 1 : 0
+    cfg.logs_member_events !== false ? 1 : 0,
+    cfg.logs_message_events !== false ? 1 : 0,
+    cfg.logs_server_events !== false ? 1 : 0,
+    cfg.logs_moderation_events !== false ? 1 : 0,
+    cfg.logs_voice_events !== false ? 1 : 0,
+    cfg.logs_invite_events !== false ? 1 : 0,
+    cfg.logs_thread_events !== false ? 1 : 0,
+    cfg.logs_bulk_message_events !== false ? 1 : 0
   );
 }
 
@@ -1957,6 +2085,11 @@ module.exports = {
   getAllGuildAiSettings,
   setGuildAiSetting,
   deleteGuildAiSetting,
+
+  // ── Dashboard access policy
+  getDashboardAccess,
+  getAllDashboardAccess,
+  setDashboardAccess,
 
   // ── Command config ───────────────────────────────────────────────────────
   getAllCommandConfigs,

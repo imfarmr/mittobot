@@ -34,6 +34,8 @@ export function useGuildMeta(guildId: string) {
     guildName: string | null;
     channels: Channel[];
     roles: Role[];
+    channelCounts?: { text: number; voice: number; stage: number };
+    channelTotal?: number;
   }>({
     queryKey: ["guild", guildId, "meta"],
     queryFn: () => get(guildPath("/api/automod", guildId)),

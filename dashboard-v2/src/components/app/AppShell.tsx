@@ -1,7 +1,7 @@
 import { useState, type ComponentType } from "react";
 import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
-  Menu, Terminal, LogOut, ChevronDown, ChevronRight,
+  Menu, LogOut, ChevronDown, ChevronRight,
   Home, Activity, Settings, Blocks, Database, FlaskConical, LayoutDashboard, Cpu, UserRound,
   // Moderation icons
   ShieldAlert, ShieldBan, Flame, FolderOpen, ScrollText, StickyNote, Zap,
@@ -11,7 +11,7 @@ import {
   // Engagement icons
   Coins, Bookmark, Music,
   // AI icons
-  Sparkles, Brain, TrendingUp, History,
+  Sparkles, Brain, TrendingUp, History, ShieldCheck,
   // System
   ArrowLeft,
 } from "lucide-react";
@@ -134,8 +134,8 @@ export default function AppShell() {
     <div className="flex flex-col h-full bg-sidebar">
       {/* Brand — no ping */}
       <div className="h-14 border-b border-sidebar-border px-5 flex items-center gap-2.5 shrink-0">
-        <Terminal className="size-5 text-primary" />            <span className="font-semibold text-foreground tracking-tight text-base">Mitto</span>
-
+        <img src="/emojinobg.png" alt="Mitto" className="size-7 rounded-lg object-cover" />
+        <span className="font-semibold text-foreground tracking-tight text-base">Mitto</span>
       </div>
 
       {/* Navigation */}
@@ -206,6 +206,19 @@ export default function AppShell() {
                   <LayoutDashboard className="size-4" />
                   Commands
                 </NavLink>
+                {guild?.canManageAccess && (
+                  <NavLink
+                    to={`/g/${guildId}/access`}
+                    className={({ isActive }) =>
+                      `flex items-center gap-2.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        isActive ? "bg-accent text-accent-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      }`
+                    }
+                  >
+                    <ShieldCheck className="size-4" />
+                    Server access
+                  </NavLink>
+                )}
               </>
             ) : (
               <Link
@@ -253,7 +266,7 @@ export default function AppShell() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : user?.isOwner ? (
             <div className="space-y-0.5">
               <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 {systemSection.label}
@@ -274,6 +287,10 @@ export default function AppShell() {
                   {item.label}
                 </NavLink>
               ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/30 bg-background-alt/30 px-3 py-3 text-[10px] leading-relaxed text-muted-foreground">
+              System controls are available to the bot owner only.
             </div>
           )}
         </div>
@@ -356,6 +373,7 @@ export default function AppShell() {
               {renderSidebarContent()}
             </SheetContent>
           </Sheet>
+          <img src="/emojinobg.png" alt="Mitto" className="size-7 rounded-lg object-cover" />
           <span className="font-semibold text-foreground tracking-tight text-sm">Mitto</span>
           <span className="text-[10px] text-muted-foreground font-mono truncate max-w-28">
             {isSystemRoute ? "System" : (guild?.name || "")}

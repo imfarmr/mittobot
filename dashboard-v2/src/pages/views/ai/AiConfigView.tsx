@@ -40,7 +40,7 @@ export default function AiConfigView() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (body: any) => post("/api/ai", { ...body, guildId }),
+    mutationFn: (body: any) => post(guildPath("/api/ai", guildId), { ...body, guildId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ai", guildId] });
       setEdits({});
@@ -55,6 +55,8 @@ export default function AiConfigView() {
 
   const provider = data.aiProvider || "groq";
   const meta = PROVIDER_META[provider] || PROVIDER_META.groq;
+  const canEdit = data.permissions?.canEdit !== false;
+  const canEditProvider = data.permissions?.canEditProvider === true;
 
   // Numeric AI settings — coerced to real numbers so they persist.
   const NUMERIC_KEYS = new Set(["aiTemperature", "aiTopP", "aiMaxTokens", "aiContextLimit", "aiChattyCooldown"]);
@@ -98,12 +100,18 @@ export default function AiConfigView() {
   return (
     <div className="space-y-4">
       <div className="mb-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground">{guild?.name || "This server"}</span> · AI behavior changes on this page apply only to the selected server. Provider credentials and model defaults remain shared.
+        <span className="font-semibold text-foreground">{guild?.name || "This server"}</span> · AI behavior changes on this server only. Provider credentials and model defaults are shared; direct-message AI is account-wide because DMs have no server context.
       </div>
-      <SaveBar dirty={dirty} saving={saveMutation.isPending} onSave={handleSave} onReset={handleReset} />
+      {!canEdit && (
+        <div className="rounded-xl border border-border/40 bg-card/40 px-4 py-3 text-xs text-muted-foreground">
+          You have viewer access to this server. AI settings are visible but locked until a manager role is assigned.
+        </div>
+      )}
+      {canEdit && <SaveBar dirty={dirty} saving={saveMutation.isPending} onSave={handleSave} onReset={handleReset} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Provider */}
+        <fieldset disabled={!canEditProvider} className="min-w-0 disabled:opacity-60">
         <Card className="border-border/40 bg-card/40">
           <CardHeader><CardTitle className="text-sm font-semibold">Provider</CardTitle><CardDescription className="text-xs">Which AI backend to use</CardDescription></CardHeader>
           <CardContent className="space-y-3">
@@ -157,8 +165,10 @@ export default function AiConfigView() {
             )}
           </CardContent>
         </Card>
+        </fieldset>
 
         {/* Parameters */}
+        <fieldset disabled={!canEdit} className="min-w-0 disabled:opacity-60">
         <Card className="border-border/40 bg-card/40">
           <CardHeader><CardTitle className="text-sm font-semibold">Parameters</CardTitle><CardDescription className="text-xs">Response generation settings</CardDescription></CardHeader>
           <CardContent className="space-y-4">
@@ -180,9 +190,11 @@ export default function AiConfigView() {
             </div>
           </CardContent>
         </Card>
+        </fieldset>
       </div>
 
       {/* Feature Flags */}
+      <fieldset disabled={!canEdit} className="disabled:opacity-60">
       <Card className="border-border/40 bg-card/40">
         <CardHeader><CardTitle className="text-sm font-semibold">Features</CardTitle><CardDescription className="text-xs">Toggle AI capabilities</CardDescription></CardHeader>
         <CardContent>
@@ -194,10 +206,14 @@ export default function AiConfigView() {
               ["aiThinkingEnabled", "Thinking", "It does what it says"],
               ["aiBrowserEnabled", "Web Browsing", "Web search"],
               ["aiChattyMode", "Skip mentions", "auto respond to messages without a trigger"],
-              ["aiDmEnabled", "Direct messages", "Respond to direct messages"],
+              ["aiDmEnabled", "Direct messages", "Global account setting for private DMs"],
             ].map(([key, label, desc]) => (
               <div key={key} className="flex items-start gap-3 p-3 rounded-lg bg-background-alt/30 border border-border/20">
-                <Switch checked={current(key) === "true"} onCheckedChange={v => set(key, v)} />
+                <Switch
+                  checked={current(key) === "true"}
+                  onCheckedChange={v => set(key, v)}
+                  disabled={!canEdit || (key === "aiDmEnabled" && !canEditProvider)}
+                />
                 <div className="space-y-0.5">
                   <span className="text-xs font-semibold text-foreground">{label}</span>
                   {desc && <p className="text-[10px] text-muted-foreground">{desc}</p>}
@@ -207,8 +223,10 @@ export default function AiConfigView() {
           </div>
         </CardContent>
       </Card>
+      </fieldset>
 
       {/* System Prompt */}
+      <fieldset disabled={!canEdit} className="disabled:opacity-60">
       <Card className="border-border/40 bg-card/40">
         <CardHeader><CardTitle className="text-sm font-semibold">System Prompt</CardTitle><CardDescription className="text-xs">The AI's base personality and instructions</CardDescription></CardHeader>
         <CardContent>
@@ -218,8 +236,10 @@ export default function AiConfigView() {
           </div>
         </CardContent>
       </Card>
+      </fieldset>
 
       {/* Advanced */}
+      <fieldset disabled={!canEdit} className="disabled:opacity-60">
       <Card className="border-border/40 bg-card/40">
         <CardHeader><CardTitle className="text-sm font-semibold">Advanced</CardTitle><CardDescription className="text-xs">Filtering, keywords, and fallback config</CardDescription></CardHeader>
         <CardContent className="space-y-4">
@@ -252,6 +272,7 @@ export default function AiConfigView() {
           </div>
         </CardContent>
       </Card>
+      </fieldset>
     </div>
   );
 }

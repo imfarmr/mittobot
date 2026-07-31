@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Terminal, Shield, Sparkles, Zap, ArrowRight } from "lucide-react";
+import { Shield, Sparkles, Zap, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
@@ -9,8 +9,8 @@ export default function LandingPage() {
       <header className="border-b border-border/40 backdrop-blur-md bg-background/60 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-lg border border-primary/20">
-              <Terminal className="size-5 text-primary" />
+            <div className="size-9 overflow-hidden rounded-xl border border-primary/20 bg-primary/10 shadow-sm">
+              <img src="/emojinobg.png" alt="Mitto" className="size-full object-cover" />
             </div>
             <span className="font-semibold text-lg tracking-tight">Mitto</span>
           </div>
@@ -33,6 +33,8 @@ export default function LandingPage() {
           <Sparkles className="size-3.5" />
           Mitto Dashboard v2 is now live
         </div>
+
+        <img src="/emojinobg.png" alt="Mitto logo" className="mb-7 size-24 rounded-[1.75rem] border border-white/15 object-cover shadow-2xl shadow-primary/20 sm:size-28" />
 
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight mb-6">
           The ultimate control deck for <span className="text-primary">Mitto</span>

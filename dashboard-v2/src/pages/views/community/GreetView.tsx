@@ -16,7 +16,18 @@ interface GreetConfig {
   config: {
     welcome?: { enabled: boolean; channelId?: string | null; message?: string };
     leave?: { enabled: boolean; channelId?: string | null; message?: string };
-    logs?: { enabled: boolean; channelId?: string | null; memberEvents?: boolean; messageEvents?: boolean };
+    logs?: {
+      enabled: boolean;
+      channelId?: string | null;
+      memberEvents?: boolean;
+      messageEvents?: boolean;
+      serverEvents?: boolean;
+      moderationEvents?: boolean;
+      voiceEvents?: boolean;
+      inviteEvents?: boolean;
+      threadEvents?: boolean;
+      bulkMessageEvents?: boolean;
+    };
   };
 }
 
@@ -51,6 +62,12 @@ export default function GreetView() {
   const [logsCh, setLogsCh] = useState("");
   const [memberEvents, setMemberEvents] = useState(true);
   const [messageEvents, setMessageEvents] = useState(true);
+  const [serverEvents, setServerEvents] = useState(true);
+  const [moderationEvents, setModerationEvents] = useState(true);
+  const [voiceEvents, setVoiceEvents] = useState(true);
+  const [inviteEvents, setInviteEvents] = useState(true);
+  const [threadEvents, setThreadEvents] = useState(true);
+  const [bulkMessageEvents, setBulkMessageEvents] = useState(true);
 
   // Sync state when data is loaded/updated
   useEffect(() => {
@@ -65,6 +82,12 @@ export default function GreetView() {
       setLogsCh(cfg.logs?.channelId || "");
       setMemberEvents(cfg.logs?.memberEvents ?? true);
       setMessageEvents(cfg.logs?.messageEvents ?? true);
+      setServerEvents(cfg.logs?.serverEvents ?? true);
+      setModerationEvents(cfg.logs?.moderationEvents ?? true);
+      setVoiceEvents(cfg.logs?.voiceEvents ?? true);
+      setInviteEvents(cfg.logs?.inviteEvents ?? true);
+      setThreadEvents(cfg.logs?.threadEvents ?? true);
+      setBulkMessageEvents(cfg.logs?.bulkMessageEvents ?? true);
     }
   }, [data]);
 
@@ -81,13 +104,30 @@ export default function GreetView() {
     logsEnabled !== (cfg.logs?.enabled ?? false) ||
     logsCh !== (cfg.logs?.channelId || "") ||
     memberEvents !== (cfg.logs?.memberEvents ?? true) ||
-    messageEvents !== (cfg.logs?.messageEvents ?? true);
+    messageEvents !== (cfg.logs?.messageEvents ?? true) ||
+    serverEvents !== (cfg.logs?.serverEvents ?? true) ||
+    moderationEvents !== (cfg.logs?.moderationEvents ?? true) ||
+    voiceEvents !== (cfg.logs?.voiceEvents ?? true) ||
+    inviteEvents !== (cfg.logs?.inviteEvents ?? true) ||
+    threadEvents !== (cfg.logs?.threadEvents ?? true) ||
+    bulkMessageEvents !== (cfg.logs?.bulkMessageEvents ?? true);
 
   const handleSave = () => {
     saveMutation.mutate({
       welcome: { enabled: welcomeEnabled, channelId: welcomeCh || null, message: welcomeMsg },
       leave: { enabled: leaveEnabled, channelId: leaveCh || null, message: leaveMsg },
-      logs: { enabled: logsEnabled, channelId: logsCh || null, memberEvents, messageEvents },
+      logs: {
+        enabled: logsEnabled,
+        channelId: logsCh || null,
+        memberEvents,
+        messageEvents,
+        serverEvents,
+        moderationEvents,
+        voiceEvents,
+        inviteEvents,
+        threadEvents,
+        bulkMessageEvents,
+      },
     });
   };
 
@@ -103,6 +143,12 @@ export default function GreetView() {
       setLogsCh(cfg.logs?.channelId || "");
       setMemberEvents(cfg.logs?.memberEvents ?? true);
       setMessageEvents(cfg.logs?.messageEvents ?? true);
+      setServerEvents(cfg.logs?.serverEvents ?? true);
+      setModerationEvents(cfg.logs?.moderationEvents ?? true);
+      setVoiceEvents(cfg.logs?.voiceEvents ?? true);
+      setInviteEvents(cfg.logs?.inviteEvents ?? true);
+      setThreadEvents(cfg.logs?.threadEvents ?? true);
+      setBulkMessageEvents(cfg.logs?.bulkMessageEvents ?? true);
       toast("Changes discarded");
     }
   };
@@ -168,7 +214,7 @@ export default function GreetView() {
 
       <Card className="border-border/40 bg-card/40">
         <CardHeader className="flex flex-row items-center justify-between">
-          <div><CardTitle className="text-sm font-semibold">Audit Logs</CardTitle><CardDescription className="text-xs">Server, member, and message event logging</CardDescription></div>
+          <div><CardTitle className="text-sm font-semibold">Server Logging</CardTitle><CardDescription className="text-xs">Choose which server activity should be sent to the log channel</CardDescription></div>
           <Switch checked={logsEnabled} onCheckedChange={setLogsEnabled} />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -184,13 +230,39 @@ export default function GreetView() {
               triggerClassName="mt-1 text-xs font-mono"
             />
           </div>
-          <div className="flex items-center gap-6 pt-2">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={memberEvents} onCheckedChange={setMemberEvents} /> Server & Member Events
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <Switch checked={messageEvents} onCheckedChange={setMessageEvents} /> Message Events (edit/delete)
-            </label>
+          <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
+            <div className="flex items-center gap-2 text-xs">
+              <Switch checked={memberEvents} onCheckedChange={setMemberEvents} aria-label="Log member events" />
+              <span><strong className="font-medium text-foreground">Member events</strong><span className="block text-[10px] text-muted-foreground">Joins, leaves, nicknames, and roles</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={messageEvents} onCheckedChange={setMessageEvents} aria-label="Log message events" />
+              <span><strong className="font-medium text-foreground">Message events</strong><span className="block text-[10px] text-muted-foreground">Edits and deletions</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={serverEvents} onCheckedChange={setServerEvents} aria-label="Log server events" />
+              <span><strong className="font-medium text-foreground">Server events</strong><span className="block text-[10px] text-muted-foreground">Channel and role changes</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={moderationEvents} onCheckedChange={setModerationEvents} aria-label="Log moderation events" />
+              <span><strong className="font-medium text-foreground">Moderation events</strong><span className="block text-[10px] text-muted-foreground">Bans and unbans</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={voiceEvents} onCheckedChange={setVoiceEvents} aria-label="Log voice events" />
+              <span><strong className="font-medium text-foreground">Voice activity</strong><span className="block text-[10px] text-muted-foreground">Joins, leaves, and moves</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={inviteEvents} onCheckedChange={setInviteEvents} aria-label="Log invite events" />
+              <span><strong className="font-medium text-foreground">Invite events</strong><span className="block text-[10px] text-muted-foreground">Created and deleted invites</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={threadEvents} onCheckedChange={setThreadEvents} aria-label="Log thread events" />
+              <span><strong className="font-medium text-foreground">Thread events</strong><span className="block text-[10px] text-muted-foreground">Created, renamed, and deleted threads</span></span>
+            </div>
+            <div className="flex items-start gap-2 text-xs">
+              <Switch checked={bulkMessageEvents} onCheckedChange={setBulkMessageEvents} aria-label="Log bulk message events" />
+              <span><strong className="font-medium text-foreground">Bulk deletions</strong><span className="block text-[10px] text-muted-foreground">Summarize purge events without content</span></span>
+            </div>
           </div>
         </CardContent>
       </Card>

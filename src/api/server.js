@@ -158,6 +158,114 @@ function startApi(ctx) {
   }));
   app.use(express.json({ limit: "1mb" }));
 
+  const dashboardAccessCache = new Map();
+  try {
+    for (const policy of require("../db").getAllDashboardAccess()) {
+      dashboardAccessCache.set(policy.guildId, policy);
+    }
+  } catch (err) {
+    console.error("[api] Failed to load dashboard access policies:", err.message);
+  }
+
+  function authPayload(req) {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token || !JWT_SECRET) return null;
+    try { return jwt.verify(token, JWT_SECRET); } catch { return null; }
+  }
+
+  function getDashboardAccessPolicy(guildId) {
+    const id = String(guildId || "");
+    if (!id) return null;
+    if (!dashboardAccessCache.has(id)) {
+      dashboardAccessCache.set(id, require("../db").getDashboardAccess(id));
+    }
+    return dashboardAccessCache.get(id);
+  }
+
+  function isNativeGuildAdmin(member) {
+    return Boolean(member?.permissions?.has(PermissionFlagsBits.Administrator) ||
+      member?.permissions?.has(PermissionFlagsBits.ManageGuild));
+  }
+
+  function dashboardAccessDecision(userId, guildId, isOwner) {
+    if (!userId || !guildId) return { allowed: false, tier: "none", canManageAccess: false, nativeAdmin: false };
+    if (isOwner || OWNER_IDS.has(userId)) {
+      return { allowed: true, tier: "security-admin", canManageAccess: true, nativeAdmin: false };
+    }
+    const guild = resolveGuild(guildId);
+    const member = guild?.members?.cache?.get(userId);
+    if (!member) return { allowed: false, tier: "none", canManageAccess: false, nativeAdmin: false };
+    const nativeAdmin = isNativeGuildAdmin(member);
+    if (nativeAdmin) {
+      return { allowed: true, tier: "security-admin", canManageAccess: true, nativeAdmin: true };
+    }
+
+    const policy = getDashboardAccessPolicy(guildId);
+    const roleIds = new Set(member.roles?.cache?.keys?.() || []);
+    // Security-admin roles remain an escape hatch if ordinary role access is
+    // disabled, so an owner can recover the policy without a database edit.
+    if (policy.securityAdminRoles.some(id => roleIds.has(id))) {
+      return { allowed: true, tier: "security-admin", canManageAccess: true, nativeAdmin: false };
+    }
+    if (!policy.accessEnabled) return { allowed: false, tier: "none", canManageAccess: false, nativeAdmin: false };
+    if (policy.managerRoles.some(id => roleIds.has(id))) {
+      return { allowed: true, tier: "manager", canManageAccess: false, nativeAdmin: false };
+    }
+    if (policy.viewerRoles.some(id => roleIds.has(id))) {
+      return { allowed: true, tier: "viewer", canManageAccess: false, nativeAdmin: false };
+    }
+    return { allowed: false, tier: "none", canManageAccess: false, nativeAdmin: false };
+  }
+
+  // Role-based users may read guild data, but only managers/security admins may
+  // mutate it. Access policy itself is security-admin-only. This is enforced
+  // centrally so a newly added guild endpoint cannot accidentally forget it.
+  app.use("/api", (req, res, next) => {
+    if (!req.user) req.user = authPayload(req);
+    if (!req.user || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+
+    // Mounted middleware usually sees /guilds/... in req.path; use the
+    // original URL as the canonical fallback so this also works behind a proxy.
+    const apiPath = String(req.originalUrl || req.path || "").split("?")[0];
+    const accessRoute = /^\/api\/guilds\/(\d{17,20})\/access$/.exec(apiPath)
+      || /^\/guilds\/(\d{17,20})\/access$/.exec(String(req.path || ""));
+    const guildId = accessRoute?.[1] || req.query?.guildId || req.body?.guildId || null;
+    if (!guildId) return next();
+
+    const decision = dashboardAccessDecision(req.user.sub, guildId, req.user.isOwner);
+    if (!decision.allowed) return res.status(403).json({ error: "You don't have access to this server" });
+    if (accessRoute && !decision.canManageAccess) {
+      return res.status(403).json({ error: "Security admin access required" });
+    }
+    const securityOnlyMutation = [
+      "/api/backup", "/api/modules", "/api/data", "/api/dangerzone",
+      "/api/antiraid", "/api/autoexec", "/api/probation",
+    ].some(prefix => apiPath === prefix || apiPath.startsWith(`${prefix}/`));
+    if (securityOnlyMutation && !decision.canManageAccess) {
+      return res.status(403).json({ error: "Security admin access is required for this action" });
+    }
+    const policy = getDashboardAccessPolicy(guildId);
+    if (!accessRoute && decision.tier === "viewer") {
+      return res.status(403).json({ error: "Manager access is required to change server settings" });
+    }
+    if (!accessRoute && policy.readOnlyMode && !decision.canManageAccess) {
+      return res.status(403).json({ error: "This server dashboard is in read-only mode" });
+    }
+    next();
+  });
+
+  // Reject ambiguous requests before any guild-scoped route can choose one ID
+  // over another. This protects every API endpoint, not only /api/ai.
+  app.use("/api", (req, res, next) => {
+    const queryGuildId = req.query?.guildId;
+    const bodyGuildId = req.body?.guildId;
+    if (queryGuildId != null && bodyGuildId != null && String(queryGuildId) !== String(bodyGuildId)) {
+      return res.status(400).json({ error: "Conflicting guildId values" });
+    }
+    next();
+  });
+
   // ── Security headers (no helmet dependency needed) ─────────────────────
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -285,14 +393,7 @@ function startApi(ctx) {
   // Check if a user has access to a guild (Admin/ManageGuild). Bot owners and JWT
   // `isOwner` flags bypass (covers password fallback and bot owners).
   function userCanAccessGuild(userId, guildId, isOwner) {
-    if (!userId || !guildId) return false;
-    if (isOwner || OWNER_IDS.has(userId)) return true;
-    const guild = resolveGuild(guildId);
-    if (!guild) return false;
-    const member = guild.members.cache.get(userId);
-    if (!member) return false;
-    return member.permissions.has(PermissionFlagsBits.Administrator) ||
-           member.permissions.has(PermissionFlagsBits.ManageGuild);
+    return dashboardAccessDecision(userId, guildId, isOwner).allowed;
   }
 
   // Resolve a guild by ID, falling back to the first guild (backward compat).
@@ -304,6 +405,37 @@ function startApi(ctx) {
   // Extract guildId from a request: query string for GET, body for POST.
   function reqGuildId(req) {
     return req.query?.guildId || req.body?.guildId || null;
+  }
+
+  function hasConflictingGuildIds(req) {
+    const queryGuildId = req.query?.guildId;
+    const bodyGuildId = req.body?.guildId;
+    return queryGuildId != null && bodyGuildId != null && String(queryGuildId) !== String(bodyGuildId);
+  }
+
+  const ACCESS_TIER_RANK = { none: 0, viewer: 1, manager: 2, "security-admin": 3 };
+
+  // Guild-scoped authorization for endpoints that are safe for ordinary
+  // dashboard users. This is deliberately separate from requireOwner: global
+  // bot settings and provider credentials must remain owner-only.
+  function requireGuildTier(minimumTier = "viewer") {
+    return (req, res, next) => {
+      if (hasConflictingGuildIds(req)) return res.status(400).json({ error: "Conflicting guildId values" });
+      const guildId = req.params?.guildId || reqGuildId(req);
+      if (!guildId) return res.status(400).json({ error: "guildId is required" });
+      const decision = dashboardAccessDecision(req.user?.sub, String(guildId), req.user?.isOwner);
+      if (!decision.allowed) return res.status(403).json({ error: "You don't have access to this server" });
+      if ((ACCESS_TIER_RANK[decision.tier] || 0) < (ACCESS_TIER_RANK[minimumTier] || 0)) {
+        return res.status(403).json({ error: `${minimumTier === "manager" ? "Manager" : "Viewer"} access is required` });
+      }
+      req.guildId = String(guildId);
+      req.guildAccess = decision;
+      next();
+    };
+  }
+
+  function isBotOwner(user) {
+    return Boolean(user?.isOwner || (user?.sub && OWNER_IDS.has(String(user.sub))));
   }
 
   function dashboardAuditAction(req) {
@@ -351,23 +483,68 @@ function startApi(ctx) {
       ? guilds.filter(g => userCanAccessGuild(userId, g.id, isOwner))
       : guilds;
 
-    return filtered.map(g => ({
-      id: g.id,
-      name: g.name,
-      memberCount: g.memberCount,
-      icon: g.icon,
-      channelCount: g.channels.cache.size,
-      roleCount: Math.max(0, g.roles.cache.size - 1), // exclude @everyone
-    }));
+    return filtered.map(g => {
+      const access = dashboardAccessDecision(userId, g.id, isOwner);
+      const channelCounts = [...g.channels.cache.values()].reduce((counts, channel) => {
+        if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement) counts.text += 1;
+        else if (channel.type === ChannelType.GuildVoice) counts.voice += 1;
+        else if (channel.type === ChannelType.GuildStageVoice) counts.stage += 1;
+        return counts;
+      }, { text: 0, voice: 0, stage: 0 });
+      const channelCount = channelCounts.text + channelCounts.voice + channelCounts.stage;
+
+      return {
+        id: g.id,
+        name: g.name,
+        memberCount: g.memberCount,
+        icon: g.icon,
+        channelCount,
+        channelCounts,
+        roleCount: Math.max(0, g.roles.cache.size - 1), // exclude @everyone
+        accessTier: access.tier,
+        canManageAccess: access.canManageAccess,
+        nativeAdmin: access.nativeAdmin,
+        readOnlyMode: getDashboardAccessPolicy(g.id).readOnlyMode,
+      };
+    });
   }
 
   // Live guild info, straight from the in-process Discord client.
   function getGuildInfo(guildId) {
     const guild = resolveGuild(guildId);
-    if (!guild) return { hasGuild: false, guildId: null, guildName: null, channels: [], roles: [] };
-    const channels = [...guild.channels.cache.filter(c => c.type === 0).values()].map(c => ({ id: c.id, name: c.name }));
+    if (!guild) {
+      return {
+        hasGuild: false,
+        guildId: null,
+        guildName: null,
+        channels: [],
+        roles: [],
+        channelCounts: { text: 0, voice: 0, stage: 0 },
+        channelTotal: 0,
+      };
+    }
+    const allChannels = [...guild.channels.cache.values()];
+    const channelCounts = allChannels.reduce((counts, channel) => {
+      if (channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement) counts.text += 1;
+      else if (channel.type === ChannelType.GuildVoice) counts.voice += 1;
+      else if (channel.type === ChannelType.GuildStageVoice) counts.stage += 1;
+      return counts;
+    }, { text: 0, voice: 0, stage: 0 });
+    const channels = allChannels
+      // Configuration pickers only expose standard text channels. Announcement
+      // channels are counted as text above, but are not universally writable.
+      .filter(c => c.type === ChannelType.GuildText)
+      .map(c => ({ id: c.id, name: c.name }));
     const roles = [...guild.roles.cache.filter(r => r.id !== guild.id && !r.managed).values()].map(r => ({ id: r.id, name: r.name }));
-    return { hasGuild: true, guildId: guild.id, guildName: guild.name, channels, roles };
+    return {
+      hasGuild: true,
+      guildId: guild.id,
+      guildName: guild.name,
+      channels,
+      roles,
+      channelCounts,
+      channelTotal: channelCounts.text + channelCounts.voice + channelCounts.stage,
+    };
   }
 
   function channelKind(channel) {
@@ -603,10 +780,64 @@ function startApi(ctx) {
   // ─── Guilds (multi-guild selector) ─────────────────────────────────────
   app.get("/api/guilds", requireAuth, (req, res) => {
     res.json({ guilds: listGuilds(req.user.sub, req.user.isOwner) });
-  });
+  });    // ─── Server dashboard access policy ────────────────────────────────────
+    app.get("/api/guilds/:guildId/access", requireAuth, (req, res) => {
+      const guildId = String(req.params.guildId || "");
+      const decision = dashboardAccessDecision(req.user.sub, guildId, req.user.isOwner);
+      if (!decision.allowed) return res.status(403).json({ error: "You don't have access to this server" });
+      if (!decision.canManageAccess) return res.status(403).json({ error: "Security admin access required" });
+      const guild = resolveGuild(guildId);
+      if (!guild) return res.status(404).json({ error: "Server not found" });
+      const roles = [...guild.roles.cache.values()]
+        .filter(role => role.id !== guild.id && !role.managed)
+        .sort((a, b) => b.position - a.position)
+        .map(role => ({ id: role.id, name: role.name, color: role.color || 0, position: role.position }));
+      res.json({ policy: getDashboardAccessPolicy(guildId), roles, tier: decision.tier, nativeAdmin: decision.nativeAdmin });
+    });
 
-  // ─── Status ────────────────────────────────────────────────────────────
-  app.get("/api/status", requireAuth, (req, res) => {
+    app.put("/api/guilds/:guildId/access", requireAuth, (req, res) => {
+      const guildId = String(req.params.guildId || "");
+      const decision = dashboardAccessDecision(req.user.sub, guildId, req.user.isOwner);
+      if (!decision.allowed) return res.status(403).json({ error: "You don't have access to this server" });
+      if (!decision.canManageAccess) return res.status(403).json({ error: "Security admin access required" });
+      const guild = resolveGuild(guildId);
+      if (!guild) return res.status(404).json({ error: "Server not found" });
+      const body = req.body || {};
+      const roleMap = new Map([...guild.roles.cache.values()].map(role => [role.id, role]));
+      const cleanRoleIds = (value, label) => {
+        if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
+        const ids = [...new Set(value.map(String))].slice(0, 50);
+        for (const id of ids) {
+          const role = roleMap.get(id);
+          if (!/^\d{17,20}$/.test(id) || !role || role.id === guild.id || role.managed) {
+            throw new Error(`Invalid ${label} role`);
+          }
+        }
+        return ids;
+      };
+      try {
+        const viewerRoles = cleanRoleIds(body.viewerRoles, "viewer");
+        const managerRoles = cleanRoleIds(body.managerRoles, "manager");
+        const securityAdminRoles = cleanRoleIds(body.securityAdminRoles, "security admin");
+        const all = [...viewerRoles, ...managerRoles, ...securityAdminRoles];
+        if (new Set(all).size !== all.length) return res.status(400).json({ error: "A role can only belong to one access tier" });
+        const policy = require("../db").setDashboardAccess(guildId, {
+          viewerRoles,
+          managerRoles,
+          securityAdminRoles,
+          accessEnabled: body.accessEnabled !== false,
+          readOnlyMode: body.readOnlyMode === true,
+          showAuditLogs: body.showAuditLogs !== false,
+        }, req.user.sub);
+        dashboardAccessCache.set(guildId, policy);
+        res.json({ ok: true, policy });
+      } catch (err) {
+        res.status(400).json({ error: err.message });
+      }
+    });
+
+    // ─── Status ────────────────────────────────────────────────────────────
+    app.get("/api/status", requireAuth, (req, res) => {
     const client = ctx.client;
     if (!client || !client.user) {
       return res.json({ online: false, ping: 0, guilds: 0, users: 0, uptimeMs: 0, tag: "Offline", activity: null });
@@ -701,29 +932,48 @@ function startApi(ctx) {
     res.json({ ok: true, settings: getBotSettings() });
   });
 
-  // ─── AI (owner-only — provider credentials are global; behavior is per guild) ──
-  app.get("/api/ai", requireAuth, requireOwner, async (req, res) => {
-    const guildId = reqGuildId(req);
-    if (!guildId) return res.status(400).json({ error: "guildId is required for AI settings" });
-    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
-      return res.status(403).json({ error: "You don't have access to this guild" });
-    }
+  // ─── AI (behavior is per guild; provider credentials remain owner-only) ──
+  app.get("/api/ai", requireAuth, requireGuildTier("viewer"), async (req, res) => {
+    if (ctx.aiGuildScopeReady !== true) return res.status(503).json({ error: "AI guild settings are still initializing" });
     try {
-      res.json(await ai.getPublicSettingsAsync(guildId));
+      const output = await ai.getPublicSettingsAsync(req.guildId);
+      const owner = isBotOwner(req.user);
+      output.permissions = {
+        canEdit: (ACCESS_TIER_RANK[req.guildAccess.tier] || 0) >= ACCESS_TIER_RANK.manager,
+        canEditProvider: owner,
+      };
+      // Never expose provider credential presence or the key suffix to a
+      // role-based user, even though the public settings endpoint is read-only.
+      if (!owner) {
+        output.hasApiKey = false;
+        output.apiKeyPreview = "";
+      }
+      res.json(output);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post("/api/ai", requireAuth, requireOwner, (req, res) => {
-    const guildId = reqGuildId(req);
-    if (!guildId) return res.status(400).json({ error: "guildId is required for AI settings" });
-    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
-      return res.status(403).json({ error: "You don't have access to this guild" });
-    }
+  app.post("/api/ai", requireAuth, requireGuildTier("manager"), (req, res) => {
+    if (ctx.aiGuildScopeReady !== true) return res.status(503).json({ error: "AI guild settings are still initializing" });
     try {
-      ai.updateSettings(req.body || {}, guildId);
-      res.json({ ok: true, ...ai.getPublicSettings(guildId) });
+      const owner = isBotOwner(req.user);
+      // Managers may change only behavior keys that are persisted per guild.
+      // Filtering here prevents future additions to updateSettings from
+      // accidentally turning a guild manager into a global bot administrator.
+      const body = req.body || {};
+      const canManageSecurity = Boolean(req.guildAccess?.canManageAccess);
+      const safeBody = owner
+        ? body
+        : Object.fromEntries([...settings.GUILD_AI_KEYS]
+          .filter(key => key !== "aiToolPermissions" || canManageSecurity)
+          .filter(key => Object.prototype.hasOwnProperty.call(body, key))
+          .map(key => [key, body[key]]));
+      if (!owner && Object.keys(safeBody).length === 0) {
+        return res.status(403).json({ error: "Only per-server AI settings can be changed by managers" });
+      }
+      ai.updateSettings(safeBody, req.guildId);
+      res.json({ ok: true, ...ai.getPublicSettings(req.guildId) });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
@@ -782,6 +1032,14 @@ function startApi(ctx) {
       const row = dbMod.get("SELECT guild_id FROM ai_memories WHERE id = ?", Number(req.params.id));
       if (!row || !userCanAccessGuild(req.user.sub, row.guild_id, req.user.isOwner))
         return res.status(404).json({ error: "Not found" });
+      const decision = dashboardAccessDecision(req.user.sub, row.guild_id, req.user.isOwner);
+      if ((ACCESS_TIER_RANK[decision.tier] || 0) < ACCESS_TIER_RANK.manager) {
+        return res.status(403).json({ error: "Manager access is required to delete AI memories" });
+      }
+      const policy = getDashboardAccessPolicy(row.guild_id);
+      if (policy?.readOnlyMode && !decision.canManageAccess) {
+        return res.status(403).json({ error: "This server dashboard is in read-only mode" });
+      }
       const id = Number(req.params.id);
       const aiMemory = require("../ai/memory");
       const deleted = await aiMemory.forget(id);
@@ -857,7 +1115,7 @@ function startApi(ctx) {
 
   // ─── AI Chat (SSE streaming endpoint) ────────────────────────────────────
   // Owner-only — streams AI responses token-by-token with a typewriter effect.
-  app.post("/api/ai/chat", requireAuth, requireOwner, async (req, res) => {
+  app.post("/api/ai/chat", requireAuth, requireGuildTier("manager"), async (req, res) => {
     const { message, history, thinkingEnabled, guildId, model: modelOverride } = req.body || {};
     if (!guildId) return res.status(400).json({ error: "guildId is required for AI chat" });
     if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
@@ -1183,11 +1441,17 @@ function startApi(ctx) {
   // ─── Feature categories ──────────────────────────────────────────────────
   app.get("/api/dashboard-audit", requireAuth, async (req, res) => {
     const guildId = reqGuildId(req);
-    if (guildId && !userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+    if (!guildId) return res.status(400).json({ error: "guildId is required" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
       return res.status(403).json({ error: "You don't have access to this guild" });
     }
     try {
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+      if (guildId) {
+        const policy = getDashboardAccessPolicy(guildId);
+        const decision = dashboardAccessDecision(req.user.sub, guildId, req.user.isOwner);
+        if (policy && !policy.showAuditLogs && !decision.canManageAccess) return res.json({ entries: [] });
+      }
       const entries = await require("../db").getDashboardAudit(guildId, limit);
       res.json({ entries });
     } catch (err) {
@@ -1554,26 +1818,53 @@ function startApi(ctx) {
     const b = req.body || {};
     const clean = {};
     const okChan = v => v === null || /^\d{17,20}$/.test(v || "");
-    if (b.welcome) clean.welcome = {
-      enabled: !!b.welcome.enabled,
-      channelId: okChan(b.welcome.channelId) ? (b.welcome.channelId || null) : null,
+    const validLogChannel = v => {
+      if (!okChan(v)) return false;
+      if (v === null || !guildInfo.guildId) return true;
+      const channel = ctx.client?.guilds?.cache?.get(guildInfo.guildId)?.channels?.cache?.get(v);
+      return channel?.type === ChannelType.GuildText;
+    };
+    if (b.welcome) {
+      if (b.welcome.channelId && !validLogChannel(b.welcome.channelId)) {
+        return res.status(400).json({ error: "Welcome channel must be a text channel in the selected server" });
+      }
+      clean.welcome = {
+        enabled: !!b.welcome.enabled,
+        channelId: b.welcome.channelId || null,
       message: String(b.welcome.message || "").slice(0, 1500),
       embedColor: String(b.welcome.embedColor || "#57f287").slice(0, 7),
       imageUrl: String(b.welcome.imageUrl || "").slice(0, 500),
       authorName: String(b.welcome.authorName || "").slice(0, 256),
-      title: String(b.welcome.title || "").slice(0, 256),
-    };
-    if (b.leave) clean.leave = {
-      enabled: !!b.leave.enabled,
-      channelId: okChan(b.leave.channelId) ? (b.leave.channelId || null) : null,
-      message: String(b.leave.message || "").slice(0, 1500),
-    };
-    if (b.logs) clean.logs = {
-      enabled: !!b.logs.enabled,
-      channelId: okChan(b.logs.channelId) ? (b.logs.channelId || null) : null,
-      memberEvents: !!b.logs.memberEvents,
-      messageEvents: !!b.logs.messageEvents,
-    };
+        title: String(b.welcome.title || "").slice(0, 256),
+      };
+    }
+    if (b.leave) {
+      if (b.leave.channelId && !validLogChannel(b.leave.channelId)) {
+        return res.status(400).json({ error: "Leave channel must be a text channel in the selected server" });
+      }
+      clean.leave = {
+        enabled: !!b.leave.enabled,
+        channelId: b.leave.channelId || null,
+        message: String(b.leave.message || "").slice(0, 1500),
+      };
+    }
+    if (b.logs) {
+      if (b.logs.channelId && !validLogChannel(b.logs.channelId)) {
+        return res.status(400).json({ error: "Log channel must be a text channel in the selected server" });
+      }
+      clean.logs = {
+        enabled: !!b.logs.enabled,
+        channelId: b.logs.channelId || null,
+        memberEvents: b.logs.memberEvents !== false,
+        messageEvents: b.logs.messageEvents !== false,
+        serverEvents: b.logs.serverEvents !== false,
+        moderationEvents: b.logs.moderationEvents !== false,
+        voiceEvents: b.logs.voiceEvents !== false,
+        inviteEvents: b.logs.inviteEvents !== false,
+        threadEvents: b.logs.threadEvents !== false,
+        bulkMessageEvents: b.logs.bulkMessageEvents !== false,
+      };
+    }
     const next = greet.setConfig(guildId, clean);
     res.json({ ok: true, config: next });
   });

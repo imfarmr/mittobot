@@ -1,6 +1,6 @@
 const fs   = require("fs");
 const path = require("path");
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const safe = require("./safe");
 const db = require("./db");
 
@@ -10,15 +10,38 @@ const GREET_FILE = path.join(__dirname, "..", "greet.json");
 // { [guildId]: {
 //     welcome: { enabled, channelId, message },
 //     leave:   { enabled, channelId, message },
-//     logs:    { enabled, channelId, memberEvents, messageEvents },
+//     logs:    { enabled, channelId, memberEvents, messageEvents, serverEvents, moderationEvents,
+//                voiceEvents, inviteEvents, threadEvents, bulkMessageEvents },
 //   } }
 let store = {};
+// Discord emits guildBanAdd/guildBanRemove after bot actions too. Keep a short
+// in-memory marker so command-originated moderation logs are not duplicated by
+// the corresponding gateway event.
+const recentModerationEvents = new Map();
+const MODERATION_EVENT_DEDUPE_MS = 5_000;
+// Batch high-volume audit events into a single Discord message. This keeps
+// voice/thread/invite bursts below rate limits while preserving each event.
+const pendingLogBatches = new Map();
+const LOG_BATCH_DELAY_MS = 500;
+const LOG_BATCH_SIZE = 10;
+const LOG_BATCH_MAX_PENDING = 100;
 
 function guildDefaults() {
   return {
     welcome: { enabled: false, channelId: null, message: "Welcome {user} to **{server}**! You're member #{count}.", embedColor: "#57f287", imageUrl: "", authorName: "", title: "" },
     leave:   { enabled: false, channelId: null, message: "{tag} left the server. We're now {count} members." },
-    logs:    { enabled: false, channelId: null, memberEvents: true, messageEvents: true },
+    logs:    {
+      enabled: false,
+      channelId: null,
+      memberEvents: true,
+      messageEvents: true,
+      serverEvents: true,
+      moderationEvents: true,
+      voiceEvents: true,
+      inviteEvents: true,
+      threadEvents: true,
+      bulkMessageEvents: true,
+    },
   };
 }
 
@@ -41,8 +64,14 @@ async function load() {
         logs: {
           enabled: row.logs_enabled === 1,
           channelId: row.logs_channel_id,
-          memberEvents: row.logs_member_events === 1,
-          messageEvents: row.logs_message_events === 1,
+          memberEvents: row.logs_member_events !== 0,
+          messageEvents: row.logs_message_events !== 0,
+          serverEvents: row.logs_server_events !== 0,
+          moderationEvents: row.logs_moderation_events !== 0,
+          voiceEvents: row.logs_voice_events !== 0,
+          inviteEvents: row.logs_invite_events !== 0,
+          threadEvents: row.logs_thread_events !== 0,
+          bulkMessageEvents: row.logs_bulk_message_events !== 0,
         }
       };
     }
@@ -84,6 +113,12 @@ function setConfig(guildId, patch) {
     logs_channel_id: next.logs.channelId,
     logs_member_events: next.logs.memberEvents,
     logs_message_events: next.logs.messageEvents,
+    logs_server_events: next.logs.serverEvents,
+    logs_moderation_events: next.logs.moderationEvents,
+    logs_voice_events: next.logs.voiceEvents,
+    logs_invite_events: next.logs.inviteEvents,
+    logs_thread_events: next.logs.threadEvents,
+    logs_bulk_message_events: next.logs.bulkMessageEvents,
   }).catch(e => console.error("persist greet:", e.message));
   return next;
 }
@@ -102,18 +137,89 @@ function format(template, member, guild) {
 function sendTo(guild, channelId, embed) {
   if (!channelId) return;
   const ch = guild.channels.cache.get(channelId);
-  if (ch) safe.send(ch, { embeds: [embed], allowedMentions: { parse: [] } }, "greet");
+  if (!ch) return;
+  const permissions = ch.permissionsFor?.(guild.members.me);
+  if (!permissions?.has(PermissionFlagsBits.ViewChannel) ||
+      !permissions.has(PermissionFlagsBits.SendMessages) ||
+      !permissions.has(PermissionFlagsBits.EmbedLinks)) {
+    return;
+  }
+  const embeds = Array.isArray(embed) ? embed : [embed];
+  safe.send(ch, { embeds: embeds.slice(0, 10), allowedMentions: { parse: [] } }, "greet");
 }
 
-function logEvent(guild, color, title, description) {
+function safeLogText(value, maxLength = 1000) {
+  return String(value || "*")
+    .replace(/<@!?&?\d+>/g, "[mention]")
+    .replace(/@everyone|@here/gi, "[mention]")
+    .slice(0, maxLength);
+}
+
+function flushLogBatch(key) {
+  const batch = pendingLogBatches.get(key);
+  if (!batch) return;
+  const current = getConfig(batch.guild.id);
+  // Settings may have changed while the debounce timer was waiting. Never
+  // emit buffered audit events after logging is disabled or redirected.
+  if (!current.logs.enabled || current.logs.channelId !== batch.channelId) {
+    pendingLogBatches.delete(key);
+    return;
+  }
+  // Re-check each event's category at flush time. This prevents a category
+  // that was disabled during the debounce window from being emitted anyway.
+  batch.embeds = batch.embeds.filter(item => current.logs[item.category] === true);
+  const droppedByCategory = batch.droppedByCategory || {};
+  const visibleDropped = Object.entries(droppedByCategory)
+    .filter(([category]) => current.logs[category] === true)
+    .reduce((total, [, count]) => total + count, 0);
+  pendingLogBatches.delete(key);
+  const hasDropSummary = visibleDropped > 0;
+  const embeds = batch.embeds.splice(0, hasDropSummary ? LOG_BATCH_SIZE - 1 : LOG_BATCH_SIZE)
+    .map(item => item.embed);
+  if (hasDropSummary) {
+    embeds.push(new EmbedBuilder()
+      .setColor(0xfee75c)
+      .setTitle("Audit log burst truncated")
+      .setDescription(`${visibleDropped} additional events were omitted during a high-volume burst.`)
+      .setTimestamp());
+  }
+  batch.droppedByCategory = {};
+  if (embeds.length) sendTo(batch.guild, batch.channelId, embeds);
+  if (batch.embeds.length) {
+    pendingLogBatches.set(key, batch);
+    batch.timer = setTimeout(() => flushLogBatch(key), LOG_BATCH_DELAY_MS);
+    batch.timer.unref?.();
+  }
+}
+
+function queueLog(guild, channelId, embed, category = "memberEvents") {
+  const key = `${guild.id}:${channelId}`;
+  let batch = pendingLogBatches.get(key);
+  if (!batch) {
+    batch = { guild, channelId, embeds: [], droppedByCategory: {}, timer: null };
+    pendingLogBatches.set(key, batch);
+  }
+  if (batch.embeds.length >= LOG_BATCH_MAX_PENDING) {
+    const dropped = batch.embeds.shift();
+    const droppedCategory = dropped?.category || "memberEvents";
+    batch.droppedByCategory[droppedCategory] = (batch.droppedByCategory[droppedCategory] || 0) + 1;
+  }
+  batch.embeds.push({ embed, category });
+  if (!batch.timer) {
+    batch.timer = setTimeout(() => flushLogBatch(key), LOG_BATCH_DELAY_MS);
+    batch.timer.unref?.();
+  }
+}
+
+function logEvent(guild, color, title, description, category = "memberEvents") {
   const cfg = getConfig(guild.id);
-  if (!cfg.logs.enabled || !cfg.logs.memberEvents || !cfg.logs.channelId) return;
+  if (!cfg.logs.enabled || !cfg.logs[category] || !cfg.logs.channelId) return;
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(title)
-    .setDescription(String(description || "*").slice(0, 4096))
+    .setTitle(safeLogText(title, 256))
+    .setDescription(safeLogText(description, 4096))
     .setTimestamp();
-  sendTo(guild, cfg.logs.channelId, embed);
+  queueLog(guild, cfg.logs.channelId, embed, category);
 }
 
 // ─── Event handlers ───
@@ -131,7 +237,7 @@ async function onMemberAdd(member) {
   if (cfg.logs.enabled && cfg.logs.memberEvents && cfg.logs.channelId) {
     const embed = new EmbedBuilder().setColor(0x57f287).setAuthor({ name: `${member.user.tag} joined`, iconURL: member.user.displayAvatarURL() })
       .setDescription(`<@${member.id}> • account created <t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`).setTimestamp();
-    sendTo(member.guild, cfg.logs.channelId, embed);
+    queueLog(member.guild, cfg.logs.channelId, embed, "memberEvents");
   }
 }
 
@@ -144,7 +250,7 @@ async function onMemberRemove(member) {
   if (cfg.logs.enabled && cfg.logs.memberEvents && cfg.logs.channelId) {
     const embed = new EmbedBuilder().setColor(0xed4245).setAuthor({ name: `${member.user.tag} left`, iconURL: member.user.displayAvatarURL() })
       .setDescription(`<@${member.id}>`).setTimestamp();
-    sendTo(member.guild, cfg.logs.channelId, embed);
+    queueLog(member.guild, cfg.logs.channelId, embed, "memberEvents");
   }
 }
 
@@ -154,8 +260,25 @@ async function onMessageDelete(message) {
   if (!cfg.logs.enabled || !cfg.logs.messageEvents || !cfg.logs.channelId) return;
   const embed = new EmbedBuilder().setColor(0xed4245)
     .setAuthor({ name: `${message.author?.tag ?? "Unknown"} • message deleted`, iconURL: message.author?.displayAvatarURL?.() })
-    .setDescription(`In <#${message.channel.id}>:\n${(message.content || "*[no text / embed]*").slice(0, 1500)}`).setTimestamp();
-  sendTo(message.guild, cfg.logs.channelId, embed);
+    .setDescription(`In <#${message.channel.id}>:\n${safeLogText(message.content || "*[no text / embed]*", 1500)}`).setTimestamp();
+  queueLog(message.guild, cfg.logs.channelId, embed, "messageEvents");
+}
+
+async function onMessageDeleteBulk(messages) {
+  const first = messages?.first?.() || [...(messages?.values?.() || [])][0];
+  const guild = first?.guild;
+  if (!guild) return;
+  const cfg = getConfig(guild.id);
+  if (!cfg.logs.enabled || !cfg.logs.bulkMessageEvents || !cfg.logs.channelId) return;
+  const channelId = first.channel?.id;
+  const channelLabel = channelId ? `<#${channelId}>` : "a channel";
+  const count = messages?.size || messages?.length || 0;
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle("Bulk messages deleted")
+    .setDescription(`${count} messages were deleted from ${channelLabel}. Content is omitted from bulk events.`)
+    .setTimestamp();
+  queueLog(guild, cfg.logs.channelId, embed, "bulkMessageEvents");
 }
 
 async function onMessageUpdate(oldMsg, newMsg) {
@@ -167,10 +290,51 @@ async function onMessageUpdate(oldMsg, newMsg) {
     .setAuthor({ name: `${newMsg.author?.tag ?? "Unknown"} • message edited`, iconURL: newMsg.author?.displayAvatarURL?.() })
     .setDescription(`In <#${newMsg.channel.id}> ([jump](${newMsg.url}))`)
     .addFields(
-      { name: "Before", value: (oldMsg.content || "*[unknown]*").slice(0, 1000) },
-      { name: "After",  value: (newMsg.content || "*[unknown]*").slice(0, 1000) },
+      { name: "Before", value: safeLogText(oldMsg.content || "*[unknown]*") },
+      { name: "After",  value: safeLogText(newMsg.content || "*[unknown]*") },
     ).setTimestamp();
-  sendTo(newMsg.guild, cfg.logs.channelId, embed);
+  queueLog(newMsg.guild, cfg.logs.channelId, embed, "messageEvents");
+}
+
+async function onVoiceStateUpdate(oldState, newState) {
+  const guild = newState.guild || oldState.guild;
+  const member = newState.member || oldState.member;
+  if (!guild || !member || member.user?.bot) return;
+  const before = oldState.channel;
+  const after = newState.channel;
+  if (before?.id === after?.id) return;
+  let action;
+  let color;
+  if (!before && after) { action = `**${member.user.tag}** joined <#${after.id}>`; color = 0x57f287; }
+  else if (before && !after) { action = `**${member.user.tag}** left <#${before.id}>`; color = 0xed4245; }
+  else { action = `**${member.user.tag}** moved from <#${before.id}> to <#${after.id}>`; color = 0x5865f2; }
+  logEvent(guild, color, "Voice activity", action, "voiceEvents");
+}
+
+async function onInviteCreate(invite) {
+  if (!invite.guild) return;
+  const creator = invite.inviter?.tag || invite.inviter?.username || "Unknown user";
+  const channel = invite.channel?.name ? `#${invite.channel.name}` : "a channel";
+  logEvent(invite.guild, 0x57f287, "Invite created", `**${creator}** created an invite for ${channel}. Uses: ${invite.maxUses || "unlimited"}; expires: ${invite.maxAge ? `${invite.maxAge}s` : "never"}.`, "inviteEvents");
+}
+
+async function onInviteDelete(invite) {
+  if (!invite.guild) return;
+  const channel = invite.channel?.name ? `#${invite.channel.name}` : "a channel";
+  logEvent(invite.guild, 0xed4245, "Invite deleted", `Invite **${invite.code || "unknown"}** was deleted from ${channel}.`, "inviteEvents");
+}
+
+async function onThreadCreate(thread) {
+  if (thread.guild) logEvent(thread.guild, 0x57f287, "Thread created", `**${thread.name || thread.id}** in <#${thread.parentId || thread.id}>`, "threadEvents");
+}
+
+async function onThreadDelete(thread) {
+  if (thread.guild) logEvent(thread.guild, 0xed4245, "Thread deleted", `**${thread.name || thread.id}**`, "threadEvents");
+}
+
+async function onThreadUpdate(oldThread, newThread) {
+  if (!newThread.guild || oldThread.name === newThread.name) return;
+  logEvent(newThread.guild, 0xfee75c, "Thread renamed", `**${oldThread.name || oldThread.id}** → **${newThread.name || newThread.id}**`, "threadEvents");
 }
 
 async function onMemberUpdate(oldMember, newMember) {
@@ -189,42 +353,91 @@ async function onMemberUpdate(oldMember, newMember) {
 }
 
 async function onChannelCreate(channel) {
-  if (channel.guild) logEvent(channel.guild, 0x57f287, "Channel created", `#${channel.name || channel.id}`);
+  if (channel.guild) logEvent(channel.guild, 0x57f287, "Channel created", `#${channel.name || channel.id}`, "serverEvents");
 }
 
 async function onChannelDelete(channel) {
-  if (channel.guild) logEvent(channel.guild, 0xed4245, "Channel deleted", `#${channel.name || channel.id}`);
+  if (channel.guild) logEvent(channel.guild, 0xed4245, "Channel deleted", `#${channel.name || channel.id}`, "serverEvents");
 }
 
 async function onChannelUpdate(oldChannel, newChannel) {
   if (!newChannel.guild || oldChannel.name === newChannel.name) return;
-  logEvent(newChannel.guild, 0xfee75c, "Channel renamed", `**${oldChannel.name || oldChannel.id}** → **${newChannel.name || newChannel.id}**`);
+  logEvent(newChannel.guild, 0xfee75c, "Channel renamed", `**${oldChannel.name || oldChannel.id}** → **${newChannel.name || newChannel.id}**`, "serverEvents");
 }
 
 async function onRoleCreate(role) {
-  logEvent(role.guild, 0x57f287, "Role created", `**${role.name}**`);
+  logEvent(role.guild, 0x57f287, "Role created", `**${role.name}**`, "serverEvents");
 }
 
 async function onRoleDelete(role) {
-  logEvent(role.guild, 0xed4245, "Role deleted", `**${role.name}**`);
+  logEvent(role.guild, 0xed4245, "Role deleted", `**${role.name}**`, "serverEvents");
 }
 
 async function onRoleUpdate(oldRole, newRole) {
-  if (oldRole.name !== newRole.name) logEvent(newRole.guild, 0xfee75c, "Role renamed", `**${oldRole.name}** → **${newRole.name}**`);
+  if (oldRole.name !== newRole.name) logEvent(newRole.guild, 0xfee75c, "Role renamed", `**${oldRole.name}** → **${newRole.name}**`, "serverEvents");
+}
+
+function moderationEventKey(guildId, userId, action) {
+  return `${guildId}:${userId || "unknown"}:${action}`;
+}
+
+function markModerationGatewayEvent(guildId, userId, action) {
+  const now = Date.now();
+  for (const [key, expiresAt] of recentModerationEvents) {
+    if (expiresAt <= now) recentModerationEvents.delete(key);
+  }
+  const key = moderationEventKey(guildId, userId, action);
+  recentModerationEvents.set(key, now + MODERATION_EVENT_DEDUPE_MS);
+}
+
+function consumeModerationGatewayEvent(guildId, userId, action) {
+  const now = Date.now();
+  for (const [key, expiresAt] of recentModerationEvents) {
+    if (expiresAt <= now) recentModerationEvents.delete(key);
+  }
+  const key = moderationEventKey(guildId, userId, action);
+  if (!recentModerationEvents.has(key)) return false;
+  recentModerationEvents.delete(key);
+  return true;
 }
 
 async function onGuildBanAdd(ban) {
-  logEvent(ban.guild, 0xed4245, "Member banned", `**${ban.user?.tag || ban.user?.id || "Unknown user"}**`);
+  const userId = ban.user?.id;
+  if (consumeModerationGatewayEvent(ban.guild.id, userId, "ban")) return;
+  logEvent(ban.guild, 0xed4245, "Member banned", `**${ban.user?.tag || userId || "Unknown user"}**`, "moderationEvents");
 }
 
 async function onGuildBanRemove(ban) {
-  logEvent(ban.guild, 0x57f287, "Member unbanned", `**${ban.user?.tag || ban.user?.id || "Unknown user"}**`);
+  const userId = ban.user?.id;
+  if (consumeModerationGatewayEvent(ban.guild.id, userId, "unban")) return;
+  logEvent(ban.guild, 0x57f287, "Member unbanned", `**${ban.user?.tag || userId || "Unknown user"}**`, "moderationEvents");
+}
+
+// Shared moderation-command logger. The moderation module already persists
+// structured cases in moderation_log; this mirrors those actions to the
+// configured Discord log channel without exposing proof or sensitive payloads.
+async function logModerationAction(guild, { userId, moderator, action, reason, details }) {
+  if (!guild) return;
+  const cfg = getConfig(guild.id);
+  if (!cfg.logs.enabled || !cfg.logs.moderationEvents || !cfg.logs.channelId) return;
+  const target = userId ? `<@${userId}>` : "Unknown user";
+  const description = [`Target: ${target}`, `Moderator: ${moderator || "Unknown moderator"}`];
+  if (reason) description.push(`Reason: ${safeLogText(reason)}`);
+  if (details) description.push(`Details: ${safeLogText(details)}`);
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setTitle(`Moderation action: ${action}`)
+    .setDescription(description.join("\\n"))
+    .setTimestamp();
+  queueLog(guild, cfg.logs.channelId, embed, "moderationEvents");
 }
 
 module.exports = {
   load, save, getConfig, setConfig,
-  onMemberAdd, onMemberRemove, onMessageDelete, onMessageUpdate, onMemberUpdate,
+  onMemberAdd, onMemberRemove, onMessageDelete, onMessageDeleteBulk, onMessageUpdate, onMemberUpdate,
+  onVoiceStateUpdate, onInviteCreate, onInviteDelete, onThreadCreate, onThreadDelete, onThreadUpdate,
   onChannelCreate, onChannelDelete, onChannelUpdate,
   onRoleCreate, onRoleDelete, onRoleUpdate, onGuildBanAdd, onGuildBanRemove,
+  markModerationGatewayEvent, consumeModerationGatewayEvent, logModerationAction,
   GREET_FILE,
 };

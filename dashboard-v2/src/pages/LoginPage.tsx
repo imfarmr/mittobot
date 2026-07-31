@@ -65,7 +65,10 @@ export default function LoginPage() {
           Back
         </Button>
 
-        <CardHeader className="text-center pt-12">
+        <CardHeader className="flex flex-col items-center text-center pt-12">
+          <img src="/emojinobg.png" alt="Mitto logo" className="mb-4 size-20 rounded-[1.5rem] border border-white/15 object-cover shadow-xl shadow-primary/20" />
+          <h1 className="text-xl font-semibold tracking-tight">Mitto</h1>
+          <p className="mt-1 text-xs text-muted-foreground">Control Panel</p>
         </CardHeader>
 
         <CardContent className="space-y-6">

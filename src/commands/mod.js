@@ -4,6 +4,7 @@ const { isAuthorized, noPermEmbed, errorEmbed, successEmbed, resolveUserId, pars
 const config = require("../config");
 const db = require("../db");
 const autoexec = require("../autoexec");
+const greet = require("../greet");
 
 function usage(ctx, text) {
   return `\`${ctx?.utils?.PREFIX || "$"}${text}\``;
@@ -85,8 +86,15 @@ async function applyEscalation(guild, member, step, reason) {
       }
     } else if (step.action === "ban") {
       if (me.permissions.has(PermissionFlagsBits.BanMembers) && member.bannable) {
-        await member.ban({ reason: escalationReason });
-        result = "🔨 auto-banned";
+        greet.markModerationGatewayEvent(guild.id, member.id, "ban");
+        try {
+          await member.ban({ reason: escalationReason });
+          result = "🔨 auto-banned";
+        } catch (err) {
+          // Do not suppress a later unrelated gateway event if the API call failed.
+          greet.consumeModerationGatewayEvent(guild.id, member.id, "ban");
+          throw err;
+        }
       }
     } else if (step.action === "probation" || (step.action === "probate")) {
       // Assign probation role
@@ -103,6 +111,19 @@ async function applyEscalation(guild, member, step, reason) {
     }
   } catch (err) {
     console.error(`[mod] applyEscalation ${step?.action} failed:`, err.message);
+  }
+  if (result) {
+    try {
+      await greet.logModerationAction(guild, {
+        userId: member.id,
+        moderator: "Automatic escalation",
+        action: step.action,
+        reason,
+        details: result.replace(/^\S+\s*/, ""),
+      });
+    } catch (err) {
+      console.error(`[mod] Failed to send escalation server log:`, err.message);
+    }
   }
   return result;
 }
@@ -221,6 +242,16 @@ async function logModAction(guildId, userId, modId, action, reason, details, pro
   } catch (err) {
     console.error(`[mod] Failed to log ${action} for ${userId}:`, err.message);
   }
+
+  // Mirror the structured case to the configured server log channel. Resolve
+  // the guild from the client reference set during bot bootstrap; failures are
+  // intentionally isolated from the moderation action itself.
+  try {
+    const guild = clientRef?.guilds?.cache?.get(guildId);
+    await greet.logModerationAction(guild, { userId, moderator: modId, action, reason, details });
+  } catch (err) {
+    console.error(`[mod] Failed to send ${action} server log:`, err.message);
+  }
 }
 
 // Fire an autoexec trigger for a mod action, sharing common payload fields.
@@ -278,6 +309,12 @@ async function collectProof(message) {
 }
 
 async function execRealMod(respond, guild, type, member, durationMs, reason, data, authorTag, { severity = 1, moderatorId, proof } = {}) {
+  const pendingGatewayActions = new Set();
+  const markPending = action => {
+    greet.markModerationGatewayEvent(guild.id, member.id, action);
+    pendingGatewayActions.add(action);
+  };
+  const completePending = action => pendingGatewayActions.delete(action);
   try {
     const username = member.user.username;
     const userId = member.id;
@@ -326,7 +363,15 @@ async function execRealMod(respond, guild, type, member, durationMs, reason, dat
       return respond({ embeds: [successEmbed(`${username} kicked | ${reason}`)] });
     }
     if (type === "ban") {
-      await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      markPending("ban");
+      try {
+        await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      } catch (err) {
+        completePending("ban");
+        greet.consumeModerationGatewayEvent(guildId, userId, "ban");
+        throw err;
+      }
+      completePending("ban");
 
       await logModAction(guildId, userId, authorTag, "ban", reason, "7d msg delete", proof);
       await sendPunishmentDM(guild, member, "ban", { reason, mod: authorTag });
@@ -338,11 +383,27 @@ async function execRealMod(respond, guild, type, member, durationMs, reason, dat
       // Send DM before the ban so the member object is still fresh
       await sendPunishmentDM(guild, member, "softban", { reason, mod: authorTag });
 
-      await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      markPending("ban");
+      try {
+        await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      } catch (err) {
+        completePending("ban");
+        greet.consumeModerationGatewayEvent(guildId, userId, "ban");
+        throw err;
+      }
+      completePending("ban");
       await logModAction(guildId, userId, authorTag, "softban", reason, "7d msg delete", proof);
 
       // Immediately unban to complete the softban (ban + instant unban = message wipe)
-      await guild.bans.remove(userId, `Softban by ${authorTag}: ${reason}`);
+      markPending("unban");
+      try {
+        await guild.bans.remove(userId, `Softban by ${authorTag}: ${reason}`);
+      } catch (err) {
+        completePending("unban");
+        greet.consumeModerationGatewayEvent(guildId, userId, "unban");
+        throw err;
+      }
+      completePending("unban");
 
       fireAutoexec("softban", guildId, { guild, member, reason, authorTag, moderatorId });
       return respond({ embeds: [successEmbed(`${username} softbanned | ${reason}`)] });
@@ -353,7 +414,15 @@ async function execRealMod(respond, guild, type, member, durationMs, reason, dat
       // Send DM before the ban so the member object is still fresh
       await sendPunishmentDM(guild, member, "tempban", { reason, duration: formatDuration(durationMs), mod: authorTag });
 
-      await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      markPending("ban");
+      try {
+        await member.ban({ reason, deleteMessageSeconds: 7 * 24 * 60 * 60 });
+      } catch (err) {
+        completePending("ban");
+        greet.consumeModerationGatewayEvent(guildId, userId, "ban");
+        throw err;
+      }
+      completePending("ban");
 
       // Store in DB so the cleanup timer can auto-unban later
       await db.setTempban(guildId, userId, expiresAt, authorTag, reason);
@@ -363,6 +432,9 @@ async function execRealMod(respond, guild, type, member, durationMs, reason, dat
       return respond({ embeds: [successEmbed(`${username} banned for **${formatDuration(durationMs)}** | ${reason}`)] });
     }
   } catch (err) {
+    for (const action of pendingGatewayActions) {
+      greet.consumeModerationGatewayEvent(guild.id, member.id, action);
+    }
     console.error(err);
     return respond({ embeds: [errorEmbed(`Failed: ${err.message}`)] });
   }
@@ -464,6 +536,7 @@ async function handleRealUnmute(message, args, ctx) {
   try {
     if (mutedRole && member.roles.cache.has(mutedRole.id)) await member.roles.remove(mutedRole);
     if (message.guild.members.me.permissions.has(PermissionFlagsBits.ModerateMembers)) await safe.timeout(member, null, "real unmute");
+    await greet.logModerationAction(message.guild, { userId, moderator: message.author.tag, action: "unmute", reason: "Manual unmute" });
     await message.channel.send({ embeds: [successEmbed(`${member.user.username} unmuted`)] });
   } catch (err) { await message.reply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -477,6 +550,7 @@ async function slashRealUnmute(interaction, ctx) {
   try {
     if (mutedRole && member.roles.cache.has(mutedRole.id)) await member.roles.remove(mutedRole);
     if (interaction.guild.members.me.permissions.has(PermissionFlagsBits.ModerateMembers)) await safe.timeout(member, null, "slash real unmute");
+    await greet.logModerationAction(interaction.guild, { userId: user.id, moderator: interaction.user.tag, action: "unmute", reason: "Manual unmute" });
     await interaction.editReply({ embeds: [successEmbed(`${member.user.username} unmuted`)] });
   } catch (err) { await interaction.editReply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -484,8 +558,15 @@ async function slashRealUnmute(interaction, ctx) {
 async function handleRealUnban(message, args, ctx) {
   const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realunban <userId> [reason]")}`)] });
   const reason = args.slice(1).join(" ") || "No reason";
-  try { await message.guild.bans.remove(userId, reason); await message.channel.send({ embeds: [successEmbed(`<@${userId}> unbanned | ${reason}`)] }); }
-  catch (err) { await message.reply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
+  try {
+    greet.markModerationGatewayEvent(message.guild.id, userId, "unban");
+    await message.guild.bans.remove(userId, reason);
+    await greet.logModerationAction(message.guild, { userId, moderator: message.author.tag, action: "unban", reason });
+    await message.channel.send({ embeds: [successEmbed(`<@${userId}> unbanned | ${reason}`)] });
+  } catch (err) {
+    greet.consumeModerationGatewayEvent(message.guild.id, userId, "unban");
+    await message.reply({ embeds: [errorEmbed(`Failed: ${err.message}`)] });
+  }
   await safe.delete(message, "real unban command");
 }
 
@@ -493,8 +574,15 @@ async function slashRealUnban(interaction, ctx) {
   await interaction.deferReply();
   const user   = interaction.options.getUser("user");
   const reason = interaction.options.getString("reason") || "No reason";
-  try { await interaction.guild.bans.remove(user.id, reason); await interaction.editReply({ embeds: [successEmbed(`${user.username} unbanned | ${reason}`)] }); }
-  catch (err) { await interaction.editReply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
+  try {
+    greet.markModerationGatewayEvent(interaction.guild.id, user.id, "unban");
+    await interaction.guild.bans.remove(user.id, reason);
+    await greet.logModerationAction(interaction.guild, { userId: user.id, moderator: interaction.user.tag, action: "unban", reason });
+    await interaction.editReply({ embeds: [successEmbed(`${user.username} unbanned | ${reason}`)] });
+  } catch (err) {
+    greet.consumeModerationGatewayEvent(interaction.guild.id, user.id, "unban");
+    await interaction.editReply({ embeds: [errorEmbed(`Failed: ${err.message}`)] });
+  }
 }
 
 async function handleRealWarnList(message, args, ctx) {
@@ -523,6 +611,12 @@ async function handleRealWarnClear(message, args, ctx) {
   const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realwarnclear @user")}`)] });
   const member = await safe.orNull(message.guild.members.fetch(userId), `warnclear fetch ${userId}`);
   data.clearWarnings(message.guild.id, userId);
+  await greet.logModerationAction(message.guild, {
+    userId,
+    moderator: message.author.tag,
+    action: "warnclear",
+    reason: "All warnings cleared",
+  });
   await message.reply({ embeds: [successEmbed(`Cleared all warnings for **${member?.user.username ?? `<@${userId}>`}**`)] });
 }
 
@@ -530,6 +624,12 @@ async function slashRealWarnClear(interaction, ctx) {
   const { data } = ctx;
   const user = interaction.options.getUser("user");
   data.clearWarnings(interaction.guild.id, user.id);
+  await greet.logModerationAction(interaction.guild, {
+    userId: user.id,
+    moderator: interaction.user.tag,
+    action: "warnclear",
+    reason: "All warnings cleared",
+  });
   await interaction.reply({ embeds: [successEmbed(`Cleared all warnings for **${user.username}**`)], flags: MessageFlags.Ephemeral });
 }
 
@@ -538,6 +638,7 @@ async function handleRealLock(message, args, unlock, ctx) {
   const reason = args.join(" ") || "No reason";
   try {
     await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: unlock ? null : false }, { reason: `${unlock ? "Unlocked" : "Locked"} by ${message.author.tag}: ${reason}` });
+    await greet.logModerationAction(message.guild, { moderator: message.author.tag, action: unlock ? "unlock" : "lock", reason, details: `Channel: #${message.channel.name}` });
     await message.reply({ embeds: [successEmbed(`#${message.channel.name} ${unlock ? "unlocked 🔓" : "locked 🔒"} | ${reason}`)] });
   } catch (err) { await message.reply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -549,6 +650,7 @@ async function slashRealLock(interaction, unlock, ctx) {
   await interaction.deferReply();
   try {
     await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: unlock ? null : false }, { reason: `${unlock ? "Unlocked" : "Locked"} by ${interaction.user.tag}: ${reason}` });
+    await greet.logModerationAction(interaction.guild, { moderator: interaction.user.tag, action: unlock ? "unlock" : "lock", reason, details: `Channel: #${interaction.channel.name}` });
     await interaction.editReply({ embeds: [successEmbed(`#${interaction.channel.name} ${unlock ? "unlocked 🔓" : "locked 🔒"} | ${reason}`)] });
   } catch (err) { await interaction.editReply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -559,6 +661,7 @@ async function handleRealSlowmode(message, args, ctx) {
   if (isNaN(seconds) || seconds < 0 || seconds > 21600) return message.reply({ embeds: [errorEmbed("Provide seconds between 0 and 21600")] });
   try {
     await message.channel.setRateLimitPerUser(seconds, `Set by ${message.author.tag}`);
+    await greet.logModerationAction(message.guild, { moderator: message.author.tag, action: "slowmode", reason: seconds === 0 ? "Disabled" : `Set to ${seconds}s`, details: `Channel: #${message.channel.name}` });
     await message.reply({ embeds: [successEmbed(seconds === 0 ? "Slowmode disabled" : `Slowmode set to **${seconds}s**`)] });
   } catch (err) { await message.reply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -570,6 +673,7 @@ async function slashRealSlowmode(interaction, ctx) {
   await interaction.deferReply();
   try {
     await interaction.channel.setRateLimitPerUser(seconds, `Set by ${interaction.user.tag}`);
+    await greet.logModerationAction(interaction.guild, { moderator: interaction.user.tag, action: "slowmode", reason: seconds === 0 ? "Disabled" : `Set to ${seconds}s`, details: `Channel: #${interaction.channel.name}` });
     await interaction.editReply({ embeds: [successEmbed(seconds === 0 ? "Slowmode disabled" : `Slowmode set to **${seconds}s**`)] });
   } catch (err) { await interaction.editReply({ embeds: [errorEmbed(`Failed: ${err.message}`)] }); }
 }
@@ -958,6 +1062,13 @@ async function removeExpiredProbationRole(p) {
     if (!role) return;
     if (member.roles.cache.has(p.role_id)) {
       await safe.removeRole(member, role, "probation expired");
+      await greet.logModerationAction(guild, {
+        userId: p.user_id,
+        moderator: "Automatic expiry",
+        action: "probation-expired",
+        reason: "Probation period ended",
+        details: `Role: ${role.name}`,
+      });
     }
   } catch { /* best-effort */ }
 }
@@ -967,8 +1078,23 @@ async function removeExpiredTempban(tb) {
   try {
     const guild = clientRef.guilds.cache.get(tb.guild_id);
     if (!guild) return;
-    await guild.bans.remove(tb.user_id, `Tempban expired`).catch(() => {});
+    try {
+      greet.markModerationGatewayEvent(tb.guild_id, tb.user_id, "unban");
+      await guild.bans.remove(tb.user_id, `Tempban expired`);
+    } catch (err) {
+      // The unban did not happen; remove the pending dedupe marker so a later
+      // legitimate unban event is not accidentally suppressed.
+      greet.consumeModerationGatewayEvent(tb.guild_id, tb.user_id, "unban");
+      console.error(`[mod] tempban expiry failed for ${tb.user_id}:`, err.message);
+      return;
+    }
     await db.removeTempban(tb.guild_id, tb.user_id);
+    await greet.logModerationAction(guild, {
+      userId: tb.user_id,
+      moderator: "Automatic expiry",
+      action: "tempban-expired",
+      reason: "Temporary ban period ended",
+    });
   } catch { /* best-effort */ }
 }
 

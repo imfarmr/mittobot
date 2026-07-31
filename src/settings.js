@@ -72,9 +72,15 @@ const GUILD_AI_KEYS = new Set([
   "aiSystemPrompt", "aiAllowedChannels", "aiIgnoredChannels",
   "aiTemperature", "aiMaxTokens", "aiTopP", "aiContextLimit",
   "aiToolsEnabled", "aiMemoryEnabled", "aiThinkingEnabled",
-  "aiKeyword", "aiFallbackProviders", "aiChattyMode", "aiChattyCooldown",
-  "aiDmEnabled", "aiBrowserEnabled", "aiPersonality", "aiToolPermissions",
+  "aiKeyword",  "aiFallbackProviders", "aiChattyMode", "aiChattyCooldown",
+  "aiBrowserEnabled", "aiPersonality", "aiToolPermissions",
 ]);
+
+// These settings must never fall back to global state. In particular, a
+// server's AI enabled/disabled switch is an explicit per-guild decision.
+// Keeping this separate from GUILD_AI_KEYS lets other behavior settings retain
+// the global provider/default fallback while preventing cross-server toggles.
+const GUILD_REQUIRED_KEYS = new Set(["aiEnabled"]);
 
 // Keys whose DEFAULTS type is boolean. Used both to know which rows to
 // canonicalise on write and which existing rows to scrub on load.
@@ -110,10 +116,40 @@ function guildSettingValue(key, guildId) {
   return _guildSettings[String(guildId)]?.[key];
 }
 
-/** Read an AI behavior setting for a guild, falling back to the global value. */
+/**
+ * Read an AI behavior setting for a guild.
+ *
+ * Most behavior values inherit global defaults, but `aiEnabled` is deliberately
+ * strict: an absent guild row means disabled, never the global toggle. This
+ * prevents one server's legacy/global setting from changing another server.
+ */
 function getForGuild(key, guildId) {
   const override = guildSettingValue(key, guildId);
-  return override !== undefined ? override : get(key);
+  if (override !== undefined) return override;
+  if (GUILD_REQUIRED_KEYS.has(key)) return DEFAULTS[key];
+  return get(key);
+}
+
+function hasGuildSetting(key, guildId) {
+  return Boolean(guildId && GUILD_AI_KEYS.has(key) && guildSettingValue(key, guildId) !== undefined);
+}
+
+/**
+ * Migrate the legacy global AI toggle to the guilds currently known by Discord.
+ * Older versions stored `aiEnabled` globally; seed that value into each current
+ * guild once, then neutralize the global value so future guilds stay isolated.
+ */
+function migrateLegacyGuildAiEnabled(guildIds = []) {
+  if (get("aiEnabled") !== true) return false;
+  const ids = [...new Set(Array.from(guildIds || []).map(id => String(id || "")).filter(Boolean))];
+  if (ids.length === 0) return false;
+
+  for (const guildId of ids) {
+    if (!hasGuildSetting("aiEnabled", guildId)) setForGuild(guildId, "aiEnabled", true);
+  }
+  set("aiEnabled", false);
+  console.log(`[settings] Migrated legacy global AI enablement to ${ids.length} guild(s).`);
+  return true;
 }
 
 /** Persist an AI behavior override for one guild only. */
@@ -132,7 +168,7 @@ function setForGuild(guildId, key, value) {
 function getGuildSettings(guildId) {
   const id = String(guildId || "");
   const overrides = id ? (_guildSettings[id] || {}) : {};
-  return Object.fromEntries([...GUILD_AI_KEYS].map(key => [key, overrides[key] !== undefined ? overrides[key] : get(key)]));
+  return Object.fromEntries([...GUILD_AI_KEYS].map(key => [key, getForGuild(key, guildId)]));
 }
 
 // Async: awaited once during bot startup before any command is processed.
@@ -256,6 +292,9 @@ module.exports = {
   getGuildSettings,
   setForGuild,
   GUILD_AI_KEYS,
+  GUILD_REQUIRED_KEYS,
+  hasGuildSetting,
+  migrateLegacyGuildAiEnabled,
   DEFAULTS,
   AI_SYSTEM_PROMPT_DEFAULT,
   AI_SYSTEM_PROMPT_CONCISE,

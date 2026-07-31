@@ -159,6 +159,9 @@ const ctx = {
   roletracker,
   femboyify,
   get voiceManager() { return voiceManager; },
+  // AI settings stay unavailable until Discord guilds are known and the
+  // legacy global enablement migration has completed.
+  aiGuildScopeReady: false,
 };
 
 // Central access control for commands.
@@ -546,6 +549,7 @@ client.on("voiceStateUpdate", (oldState, newState) => {
   if (voiceManager) {
     voiceManager.handleVoiceStateUpdate(oldState, newState);
   }
+  greet.onVoiceStateUpdate(oldState, newState).catch(err => console.error("[safe] greet.onVoiceStateUpdate:", err.message));
 });
 
 client.on("messageReactionAdd", async (reaction, user) => {
@@ -612,14 +616,17 @@ client.on("messageDelete", message => {
   }
   greet.onMessageDelete(message).catch(err => console.error("[safe] greet.onMessageDelete:", err.message));
 });
+client.on("messageDeleteBulk", messages => greet.onMessageDeleteBulk(messages).catch(err => console.error("[safe] greet.onMessageDeleteBulk:", err.message)));
 client.on("messageUpdate",     (oldMsg, newMsg) => greet.onMessageUpdate(oldMsg, newMsg).catch(err => console.error("[safe] greet.onMessageUpdate:", err.message)));
 
 // Keep the invite-uses cache in sync so join attribution stays accurate.
 client.on("inviteCreate", invite => {
   invites.onInviteCreate(invite);
+  greet.onInviteCreate(invite).catch(err => console.error("[safe] greet.onInviteCreate:", err.message));
 });
 client.on("inviteDelete", invite => {
   invites.onInviteDelete(invite);
+  greet.onInviteDelete(invite).catch(err => console.error("[safe] greet.onInviteDelete:", err.message));
 });
 
 // Live role tracker and nickname lock
@@ -639,6 +646,9 @@ client.on("guildMemberUpdate", (oldMember, newMember) => {
 
 // Server audit log events. These use the configured Audit Logs channel in the
 // Greet/Community dashboard and are no-ops until it is enabled.
+client.on("threadCreate", thread => greet.onThreadCreate(thread).catch(err => console.error("[safe] greet.onThreadCreate:", err.message)));
+client.on("threadDelete", thread => greet.onThreadDelete(thread).catch(err => console.error("[safe] greet.onThreadDelete:", err.message)));
+client.on("threadUpdate", (oldThread, newThread) => greet.onThreadUpdate(oldThread, newThread).catch(err => console.error("[safe] greet.onThreadUpdate:", err.message)));
 client.on("channelCreate", channel => greet.onChannelCreate(channel).catch(err => console.error("[safe] greet.onChannelCreate:", err.message)));
 client.on("channelDelete", channel => greet.onChannelDelete(channel).catch(err => console.error("[safe] greet.onChannelDelete:", err.message)));
 client.on("channelUpdate", (oldChannel, newChannel) => greet.onChannelUpdate(oldChannel, newChannel).catch(err => console.error("[safe] greet.onChannelUpdate:", err.message)));
@@ -650,6 +660,11 @@ client.on("guildBanRemove", ban => greet.onGuildBanRemove(ban).catch(err => cons
 
 client.once("ready", async () => {
   ctx.client = client;
+  // Migrate the old global AI toggle exactly once into explicit per-guild
+  // overrides. Existing guild-specific false values are preserved; new guilds
+  // no longer inherit a setting from another server.
+  settings.migrateLegacyGuildAiEnabled(client.guilds.cache.keys());
+  ctx.aiGuildScopeReady = true;
   wireHelpContext(ctx);
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setActivity(`${settings.get("prefix")}help | mambo`, { type: 3 });

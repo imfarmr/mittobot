@@ -593,8 +593,10 @@ async function chatWithProvider(providerIds, messages, options = {}) {
 async function handleAiMessage(message, ctx) {
   const guildId = message.guild?.id || null;
   const guildGet = key => settings.getForGuild(key, guildId);
-  if (!guildGet("aiEnabled")) return false;
   const isDM = !message.guild;
+  // Guild AI is explicitly per-server. DMs use their own global DM toggle and
+  // must not be blocked by the guild-only `aiEnabled` setting.
+  if ((!isDM && !guildGet("aiEnabled")) || (isDM && settings.get("aiDmEnabled") !== true)) return false;
 
   const providerId = settings.get("aiProvider") || "groq";
   const apiKey = settings.getAiApiKey(providerId);
@@ -945,7 +947,8 @@ function getPublicSettings(guildId = null) {
     // reflect their stored state on reload. Previously these were writable via
     // updateSettings but never returned by GET /api/ai, so the dashboard always
     // rendered them as off/empty after a refresh.
-    aiDmEnabled:          guildGet("aiDmEnabled"),
+    // DMs have no guild context, so this is intentionally global.
+    aiDmEnabled:          settings.get("aiDmEnabled"),
     aiBrowserEnabled:     guildGet("aiBrowserEnabled"),
     aiKeyword:            guildGet("aiKeyword") || "",
     aiPersonality:        guildGet("aiPersonality") || "neutral",
@@ -1089,7 +1092,9 @@ function updateSettings(body, guildId = null) {
   if (typeof body.aiChattyCooldown === "number" && body.aiChattyCooldown >= 5 && body.aiChattyCooldown <= 3600) {
     setSetting("aiChattyCooldown", body.aiChattyCooldown);
   }
-  if (typeof body.aiDmEnabled === "boolean") setSetting("aiDmEnabled", body.aiDmEnabled);
+  // Direct messages have no guild context; keep this account-wide setting
+  // global instead of making the guild dashboard imply otherwise.
+  if (typeof body.aiDmEnabled === "boolean") settings.set("aiDmEnabled", body.aiDmEnabled);
   if (typeof body.aiBrowserEnabled === "boolean") setSetting("aiBrowserEnabled", body.aiBrowserEnabled);
 
   // Keyword trigger: the chat keyword that wakes the AI in guild channels.

@@ -17,30 +17,32 @@ function getToolPermission(toolName, guildId) {
 }
 
 const ALPHA_TOOLS = new Set(["create_role", "edit_role", "delete_role", "delete_channel", "set_channel_permissions", "create_category"]);
+const MOD_TOOLS = new Set(["warn_member", "mute_member", "kick_member", "ban_member", "add_role", "remove_role", "purge_messages", "slowmode_set", "create_invite", "pin_message", "unpin_message"]);
+const ADMIN_TOOLS = new Set(["create_channel", ...ALPHA_TOOLS]);
+
+function hasToolBaselineAccess(toolName, member) {
+  if (OWNER_IDS.has(member.id)) return true;
+  if (ADMIN_TOOLS.has(toolName)) return member.permissions.has(PermissionFlagsBits.Administrator);
+  if (MOD_TOOLS.has(toolName)) {
+    return member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
+      member.permissions.has(PermissionFlagsBits.Administrator);
+  }
+  return true;
+}
 
 async function checkToolAccess(toolName, member, guildId) {
-  if (!member) return false;
+  if (!member || !hasToolBaselineAccess(toolName, member)) return false;
+  // A server override may make a tool stricter, but never weaker than the
+  // hard-coded baseline above. This prevents aiToolPermissions="all" from
+  // turning role/channel administration or moderation into a public action.
   const perm = getToolPermission(toolName, guildId);
-  if (!perm) {
-    const modTools = new Set(["warn_member", "mute_member", "kick_member", "ban_member", "add_role", "remove_role", "purge_messages", "slowmode_set", "create_invite", "pin_message", "unpin_message"]);
-    const adminTools = new Set(["create_channel"]);
-    if (adminTools.has(toolName)) {
-      if (OWNER_IDS.has(member.id)) return true;
-      return member.permissions.has(PermissionFlagsBits.Administrator);
-    }
-    if (modTools.has(toolName)) {
-      if (OWNER_IDS.has(member.id)) return true;
-      return member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
-             member.permissions.has(PermissionFlagsBits.Administrator);
-    }
-    return true;
-  }
+  if (!perm) return true;
 
   switch (perm) {
     case "all": return true;
     case "mod":
       return member.permissions.has(PermissionFlagsBits.ModerateMembers) ||
-             member.permissions.has(PermissionFlagsBits.Administrator);
+        member.permissions.has(PermissionFlagsBits.Administrator);
     case "admin":
       return member.permissions.has(PermissionFlagsBits.Administrator);
     case "owner":
@@ -686,6 +688,13 @@ async function executeTool(name, args, ctx, message) {
   // Alpha experiments gating: tools that require activation
   if (ALPHA_TOOLS.has(name) && !data.isAlphaActivated(message.author.id, guild?.id)) {
     return `Error: the "${name}" tool is an experimental feature and requires alpha experiments activation. Use \`/experiments enable\` in this server to activate.`;
+  }
+
+  // Enforce the tool baseline before dispatch as a defense-in-depth layer.
+  // Individual cases may apply stricter checks, but no destructive/alpha tool
+  // can accidentally omit its permission check when a new case is added.
+  if (guild && !await checkToolAccess(name, message.member, guild.id)) {
+    return `Permission denied: you do not have sufficient Discord permissions to use the "${name}" tool via AI.`;
   }
 
   try {

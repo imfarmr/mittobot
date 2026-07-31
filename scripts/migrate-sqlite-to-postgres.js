@@ -89,8 +89,14 @@ async function main() {
         leave_message: r.leave_message,
         logs_enabled: r.logs_enabled === 1,
         logs_channel_id: r.logs_channel_id,
-        logs_member_events: r.logs_member_events === 1,
-        logs_message_events: r.logs_message_events === 1,
+        logs_member_events: r.logs_member_events !== 0,
+        logs_message_events: r.logs_message_events !== 0,
+        logs_server_events: r.logs_server_events !== 0,
+        logs_moderation_events: r.logs_moderation_events !== 0,
+        logs_voice_events: r.logs_voice_events !== 0,
+        logs_invite_events: r.logs_invite_events !== 0,
+        logs_thread_events: r.logs_thread_events !== 0,
+        logs_bulk_message_events: r.logs_bulk_message_events !== 0,
       });
     }
     return rows.length;
