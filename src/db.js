@@ -142,6 +142,25 @@ function init() {
       reaction_roles TEXT DEFAULT '{}'
     );
 
+    -- Interactive role panels: button grids or select menus that toggle roles.
+    CREATE TABLE IF NOT EXISTS role_panels (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id        TEXT NOT NULL,
+      name            TEXT NOT NULL,
+      description     TEXT DEFAULT '',
+      channel_id      TEXT,                          -- target channel for publishing
+      message_id      TEXT,                          -- published message id (set after publish)
+      panel_type      TEXT NOT NULL DEFAULT 'button', -- 'button' | 'select'
+      embed_json      TEXT,                          -- optional embed to include
+      options         TEXT NOT NULL DEFAULT '[]',    -- JSON array of {label, emoji, roleId, style?, description?}
+      exclusive       INTEGER DEFAULT 0,             -- select-only: single role at a time
+      required_role   TEXT,                          -- optional: only members with this role can interact
+      enabled         INTEGER DEFAULT 1,
+      created_at      INTEGER NOT NULL DEFAULT 0,
+      updated_at      INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS role_panels_guild ON role_panels (guild_id);
+
     CREATE TABLE IF NOT EXISTS stickies (
       channel_id TEXT PRIMARY KEY,
       message_id TEXT,
@@ -1442,6 +1461,74 @@ async function setRolesConfig(guildId, autoroles, reactionRoles) {
   `).run(guildId, JSON.stringify(autoroles || []), JSON.stringify(reactionRoles || {}));
 }
 
+// ── Role Panels ─────────────────────────────────────────────────────────
+async function getAllRolePanels(guildId = null) {
+  if (guildId) {
+    return query("SELECT * FROM role_panels WHERE guild_id = ? ORDER BY created_at ASC", [String(guildId)]);
+  }
+  return query("SELECT * FROM role_panels ORDER BY created_at ASC");
+}
+
+async function getRolePanel(id) {
+  return db.prepare("SELECT * FROM role_panels WHERE id = ?").get(id);
+}
+
+async function getRolePanelByMessageId(messageId) {
+  return db.prepare("SELECT * FROM role_panels WHERE message_id = ?").get(messageId);
+}
+
+async function createRolePanel(guildId, panel) {
+  const now = Date.now();
+  const info = db.prepare(`
+    INSERT INTO role_panels (guild_id, name, description, channel_id, message_id, panel_type, embed_json, options, exclusive, required_role, enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    guildId,
+    panel.name || "Untitled Panel",
+    panel.description || "",
+    panel.channelId || null,
+    panel.messageId || null,
+    panel.panelType || "button",
+    panel.embedJson ? JSON.stringify(panel.embedJson) : null,
+    JSON.stringify(panel.options || []),
+    panel.exclusive ? 1 : 0,
+    panel.requiredRole || null,
+    panel.enabled !== false ? 1 : 0,
+    now, now
+  );
+  return db.prepare("SELECT * FROM role_panels WHERE id = ?").get(info.lastInsertRowid);
+}
+
+async function updateRolePanel(id, patch) {
+  const existing = db.prepare("SELECT * FROM role_panels WHERE id = ?").get(id);
+  if (!existing) return null;
+  const now = Date.now();
+  db.prepare(`
+    UPDATE role_panels SET
+      name = ?, description = ?, channel_id = ?, message_id = ?,
+      panel_type = ?, embed_json = ?, options = ?,
+      exclusive = ?, required_role = ?, enabled = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    patch.name ?? existing.name,
+    patch.description ?? existing.description,
+    patch.channelId ?? existing.channel_id,
+    patch.messageId ?? existing.message_id,
+    patch.panelType ?? existing.panel_type,
+    patch.embedJson !== undefined ? (patch.embedJson ? JSON.stringify(patch.embedJson) : null) : existing.embed_json,
+    patch.options ? JSON.stringify(patch.options) : existing.options,
+    patch.exclusive !== undefined ? (patch.exclusive ? 1 : 0) : existing.exclusive,
+    patch.requiredRole !== undefined ? patch.requiredRole : existing.required_role,
+    patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : existing.enabled,
+    now, id
+  );
+  return db.prepare("SELECT * FROM role_panels WHERE id = ?").get(id);
+}
+
+async function deleteRolePanel(id) {
+  return db.prepare("DELETE FROM role_panels WHERE id = ?").run(id);
+}
+
 // ── Warnings ─────────────────────────────────────────────────────────────
 async function getAllWarnings() {
   return query("SELECT * FROM warnings ORDER BY timestamp ASC");
@@ -2182,6 +2269,14 @@ module.exports = {
   // ── Roles ───────────────────────────────────────────────────────────────
   getAllRolesConfigs,
   setRolesConfig,
+
+  // ── Role Panels ─────────────────────────────────────────────────────────
+  getAllRolePanels,
+  getRolePanel,
+  getRolePanelByMessageId,
+  createRolePanel,
+  updateRolePanel,
+  deleteRolePanel,
 
   // ── Warnings ─────────────────────────────────────────────────────────────
   getAllWarnings,

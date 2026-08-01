@@ -80,7 +80,8 @@ export default function AppShell() {
       id: "community",
       label: "Community",
       items: [
-        { label: "Greet & Logs", path: `/g/${guildId}/community/greet`, icon: MessageSquareText },
+        { label: "Welcome & Leave", path: `/g/${guildId}/community/greet`, icon: MessageSquareText },
+        { label: "Server Logging", path: `/g/${guildId}/community/logging`, icon: ScrollText },
         { label: "Roles", path: `/g/${guildId}/community/roles`, icon: UserCheck },
         { label: "Role Members", path: `/g/${guildId}/community/members`, icon: Users },
         { label: "Channels", path: `/g/${guildId}/community/channels`, icon: FolderSync },

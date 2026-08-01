@@ -113,6 +113,7 @@ const COMMAND_FILES = [
   "./src/commands/invites",
   "./src/commands/social",
   "./src/commands/music",
+  "./src/commands/rolepanels",
 ];
 for (const file of COMMAND_FILES) {
   const defs = require(file);
@@ -345,6 +346,10 @@ client.on("interactionCreate", async interaction => {
   try {
     // ui.js central dispatch — pagination, confirm dialogs, registered panels.
     if (interaction.customId && await ui.dispatch(interaction)) return;
+    // Interactive button/select-menu role panels
+    if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId?.startsWith("rolepanel:")) {
+      if (await roles.handlePanelInteraction(interaction)) return;
+    }
     // Help system: category select menu
     if (interaction.isStringSelectMenu() && interaction.customId === "help:select") {
       return await handleHelpSelect(interaction);

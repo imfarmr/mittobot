@@ -128,7 +128,7 @@ export default function CasesTab({ guildId }) {
       <Panel icon={FolderOpen} title="Cases">
         <p className="muted mb-4">
           Moderation actions with attached proof — images, files, and replied-to messages.
-          Use <code>{prefix}realwarn @user reason</code> while replying to a message or attaching files.
+          Use <code>{prefix}warn @user reason</code> while replying to a message or attaching files. Simulations use <code>{prefix}fakewarn</code>.
         </p>
 
         {stats.total > 0 && (

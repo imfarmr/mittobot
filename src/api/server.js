@@ -2435,6 +2435,218 @@ function startApi(ctx) {
     res.json({ ok: true });
   });
 
+  // ─── Role Panels (button/select-menu role panels) ──────────────────────
+  function validateRolePanelReferences(guildId, body) {
+    const guild = resolveGuild(guildId);
+    if (!guild) return "Guild not found";
+    const botMember = guild.members.me;
+    const botHighest = botMember?.roles?.highest?.position ?? -1;
+    const roleIds = new Set((body.options || []).map(option => String(option.roleId)));
+    if (body.requiredRole) roleIds.add(String(body.requiredRole));
+    for (const roleId of roleIds) {
+      const role = guild.roles.cache.get(roleId);
+      if (!role || role.id === guild.id || role.managed) return `Role ${roleId} does not exist or cannot be used`;
+      if (body.options?.some(option => String(option.roleId) === roleId) && role.position >= botHighest) {
+        return `Role ${role.name} is not below my highest role`;
+      }
+    }
+    if (body.channelId) {
+      const channel = guild.channels.cache.get(String(body.channelId));
+      if (!channel || ![ChannelType.GuildText, ChannelType.GuildAnnouncement].includes(channel.type)) {
+        return "channelId must reference a text channel in this guild";
+      }
+    }
+    return null;
+  }
+
+  app.get("/api/role-panels", requireAuth, (req, res) => {
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    if (guildInfo.guildId && !userCanAccessGuild(req.user.sub, guildInfo.guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    const panels = guildInfo.guildId ? roles.getPanels(guildInfo.guildId) : [];
+    res.json({ panels });
+  });
+
+  app.post("/api/role-panels", requireAuth, (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId required" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    const body = req.body || {};
+    if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 100) return res.status(400).json({ error: "name must be 1–100 characters" });
+    if (body.description != null && String(body.description).length > 200) return res.status(400).json({ error: "description must be 200 characters or fewer" });
+    if (!Array.isArray(body.options) || body.options.length === 0)
+      return res.status(400).json({ error: "options array required (min 1)" });
+    if (body.options.length > 25)
+      return res.status(400).json({ error: "max 25 options per panel" });
+    if (body.panelType && !['button', 'select'].includes(body.panelType))
+      return res.status(400).json({ error: "panelType must be 'button' or 'select'" });
+    const optionRoleIds = new Set();
+    for (const opt of body.options) {
+      if (!opt || !opt.roleId || !/^\d{17,20}$/.test(String(opt.roleId)))
+        return res.status(400).json({ error: `Invalid roleId in option: ${opt?.label || 'unknown'}` });
+      if (optionRoleIds.has(String(opt.roleId)))
+        return res.status(400).json({ error: "Each role can only appear once in a panel" });
+      optionRoleIds.add(String(opt.roleId));
+      if (typeof opt.label !== "string" || !opt.label.trim() || opt.label.length > 100)
+        return res.status(400).json({ error: "Each option needs a label of 1–100 characters" });
+      if (opt.description != null && String(opt.description).length > 100)
+        return res.status(400).json({ error: "Option descriptions must be 100 characters or fewer" });
+    }
+    const referenceError = validateRolePanelReferences(guildId, body);
+    if (referenceError) return res.status(400).json({ error: referenceError });
+    roles.createPanel(guildId, {
+      name: body.name,
+      description: body.description || '',
+      channelId: body.channelId || null,
+      panelType: body.panelType || 'button',
+      embedJson: body.embedJson || null,
+      options: body.options,
+      exclusive: body.exclusive === true,
+      requiredRole: body.requiredRole || null,
+      enabled: body.enabled !== false,
+    }).then(panel => {
+      res.json({ ok: true, panel });
+    }).catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+  });
+
+  app.put("/api/role-panels/:id", requireAuth, (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId required" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid panel id" });
+    const existing = roles.getPanel(id);
+    if (!existing || existing.guildId !== guildId)
+      return res.status(404).json({ error: "Panel not found" });
+    const body = req.body || {};
+    if (body.name !== undefined && (typeof body.name !== "string" || !body.name.trim() || body.name.length > 100)) return res.status(400).json({ error: "name must be 1–100 characters" });
+    if (body.description !== undefined && String(body.description).length > 200) return res.status(400).json({ error: "description must be 200 characters or fewer" });
+    if (body.panelType !== undefined && !['button', 'select'].includes(body.panelType)) return res.status(400).json({ error: "panelType must be 'button' or 'select'" });
+    if (body.options && (!Array.isArray(body.options) || body.options.length === 0))
+      return res.status(400).json({ error: "options must be a non-empty array" });
+    if (body.options && body.options.length > 25)
+      return res.status(400).json({ error: "max 25 options per panel" });
+    if (body.options) {
+      const optionRoleIds = new Set();
+      for (const opt of body.options) {
+        if (!opt || !opt.roleId || !/^\d{17,20}$/.test(String(opt.roleId)) || typeof opt.label !== "string" || !opt.label.trim() || opt.label.length > 100)
+          return res.status(400).json({ error: `Invalid role option: ${opt?.label || 'unknown'}` });
+        if (optionRoleIds.has(String(opt.roleId)))
+          return res.status(400).json({ error: "Each role can only appear once in a panel" });
+        optionRoleIds.add(String(opt.roleId));
+        if (opt.description != null && String(opt.description).length > 100)
+          return res.status(400).json({ error: "Option descriptions must be 100 characters or fewer" });
+      }
+    }
+    const referenceError = validateRolePanelReferences(guildId, { ...existing, ...body, options: body.options ?? existing.options });
+    if (referenceError) return res.status(400).json({ error: referenceError });
+    roles.updatePanel(id, {
+      name: body.name, description: body.description, channelId: body.channelId,
+      panelType: body.panelType, embedJson: body.embedJson, options: body.options,
+      exclusive: body.exclusive, requiredRole: body.requiredRole, enabled: body.enabled,
+    }).then(panel => {
+      if (!panel) return res.status(404).json({ error: "Panel not found" });
+      res.json({ ok: true, panel });
+    }).catch(err => res.status(500).json({ error: err.message }));
+  });
+
+  app.delete("/api/role-panels/:id", requireAuth, (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId required" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid panel id" });
+    const existing = roles.getPanel(id);
+    if (!existing || existing.guildId !== guildId)
+      return res.status(404).json({ error: "Panel not found" });
+    roles.deletePanel(id).then(ok => res.json({ ok: !!ok })).catch(err => res.status(500).json({ error: err.message }));
+  });
+
+  // Publish a role panel to a Discord channel
+  app.post("/api/role-panels/:id/publish", requireAuth, async (req, res) => {
+    const guildId = reqGuildId(req);
+    if (!guildId) return res.status(400).json({ error: "guildId required" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) {
+      return res.status(403).json({ error: "You don't have access to this guild" });
+    }
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid panel id" });
+    const panel = roles.getPanel(id);
+    if (!panel || panel.guildId !== guildId)
+      return res.status(404).json({ error: "Panel not found" });
+    const channelId = req.body?.channelId || panel.channelId;
+    if (!channelId) return res.status(400).json({ error: "channelId required" });
+    try {
+      const guild = resolveGuild(guildId);
+      if (!guild) return res.status(404).json({ error: "Guild not found" });
+      const channel = guild.channels.cache.get(channelId);
+      if (!channel) return res.status(404).json({ error: "Channel not found" });
+      const botMember = guild.members.me;
+      const channelPerms = botMember && channel.permissionsFor(botMember);
+      if (!channelPerms?.has(PermissionFlagsBits.SendMessages)) {
+        return res.status(403).json({ error: "I need Send Messages permission in that channel" });
+      }
+      if (panel.embedJson && !channelPerms.has(PermissionFlagsBits.EmbedLinks)) {
+        return res.status(403).json({ error: "I need Embed Links permission to publish this panel embed" });
+      }
+      const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
+      const components = [];
+      if (panel.panelType === 'button') {
+        for (let i = 0; i < panel.options.length; i += 5) {
+          const slice = panel.options.slice(i, i + 5);
+          components.push(new ActionRowBuilder().addComponents(
+            ...slice.map(opt => {
+              const btn = new ButtonBuilder()
+                .setCustomId(`rolepanel:${id}:${opt.roleId}`)
+                .setLabel(opt.label.slice(0, 80))
+                .setStyle(opt.style === 'danger' ? ButtonStyle.Danger : opt.style === 'success' ? ButtonStyle.Success : ButtonStyle.Secondary);
+              if (opt.emoji) btn.setEmoji(opt.emoji);
+              return btn;
+            })
+          ));
+        }
+      } else {
+        components.push(new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId(`rolepanel:${id}`)
+            .setPlaceholder(panel.description || 'Select a role…')
+            .setMinValues(panel.exclusive ? 0 : 1)
+            .setMaxValues(panel.exclusive ? 1 : Math.min(panel.options.length, 25))
+            .addOptions(panel.options.map(opt => ({
+              label: opt.label.slice(0, 100), value: opt.roleId,
+              emoji: opt.emoji || undefined,
+              description: (opt.description || '').slice(0, 100) || undefined,
+            })))
+        ));
+      }
+      const embeds = [];
+      if (panel.embedJson) embeds.push(EmbedBuilder.from(panel.embedJson));
+      else if (panel.name) embeds.push(new EmbedBuilder().setColor(0x5865f2).setTitle(panel.name).setDescription(panel.description || ''));
+      let message;
+      if (panel.messageId) {
+        try { message = await channel.messages.fetch(panel.messageId); await message.edit({ embeds, components }); }
+        catch { message = await safe.send(channel, { embeds, components }, 'role panel publish'); }
+      } else {
+        message = await safe.send(channel, { embeds, components }, 'role panel publish');
+      }
+      if (!message?.id) return res.status(502).json({ error: "Discord did not accept the panel message" });
+      await roles.updatePanel(id, { messageId: message.id, channelId });
+      res.json({ ok: true, messageId: message.id, channelId });
+    } catch (err) {
+      console.error('[api] role panel publish error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ─── Modules (owner-only — executes arbitrary JS on the bot) ────────────
   // NOTE: this lets an authenticated client write JS the bot will execute. Keep
   // DASHBOARD_PASSWORD strong and DASHBOARD_ORIGIN locked to your dashboard.

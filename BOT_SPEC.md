@@ -135,10 +135,10 @@ CREATE INDEX IF NOT EXISTS cases_guild_user ON cases (guild_id, user_id);
 - `$case evidence <number> <link>` — attach evidence.
 - `$case link <a> <b>`, `$case resolve <n>`, `$case overturn <n>` (admin).
 - `$history <user>` — paginated case list per user (buttons for pages).
-- `$realwarn`/`$realmute`/etc. now create cases automatically and DM the user a
+- `$warn`/`$mute`/etc. now create cases automatically and DM the user a
   case-numbered notice (template configurable, §9).
 
-**Config** (`realwarn` settings bag, extended):
+**Config** (`warn` settings bag, extended):
 ```js
 defaultSettings: {
   ladder: [{ count: 3, action: "mute", duration: "1h" }, { count: 5, action: "kick" }],

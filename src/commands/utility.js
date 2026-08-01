@@ -73,7 +73,7 @@ const HELP_CATEGORIES = {
   utility:      { emoji: "🛠️",  label: "Utility",        desc: "Core commands: help, ping, purge, afk, sticky, and more" },
   info:         { emoji: "ℹ️",   label: "Info",           desc: "userinfo, serverinfo, roleinfo, whohas, avatar, botinfo" },
   fun:          { emoji: "🎉",   label: "Fun & Economy",  desc: "Games, memes, economy, 8ball, ships, gambling" },
-  fakemod:      { emoji: "🎭",   label: "Fake Mod",       desc: "Visual-only prank moderation commands" },
+  fakemod:      { emoji: "🎭",   label: "Fake Mod",       desc: "Visual-only commands: fakewarn, fakekick, fakeban, and more" },
   realmod:      { emoji: "🛡️",   label: "Real Mod",       desc: "Actual moderation: warn, mute, kick, ban, lock" },
   admin:        { emoji: "⚙️",   label: "Admin & Setup",  desc: "Config, settings, modules, roles, backups, scrape" },
   dynamic:      { emoji: "📦",   label: "Dynamic Modules",desc: "Custom loaded command modules" },
@@ -88,10 +88,10 @@ const DEFAULT_COMMAND_CATEGORY = {
   customrole: "admin", scrape: "admin", modules: "admin", settings: "admin",
   config: "admin", reactionrole: "admin", autorole: "admin", dangerzone: "admin",
   resetglobalconversation: "admin", clearmemories: "admin",
-  realwarn: "realmod", realkick: "realmod", realban: "realmod", realmute: "realmod",
-  realunmute: "realmod", realunban: "realmod", realsoftban: "realmod", realtempban: "realmod",
-  reallock: "realmod", realunlock: "realmod", realslowmode: "realmod", syncperms: "realmod",
-  realwarnlist: "realmod", realwarnclear: "realmod",
+  warn: "realmod", kick: "realmod", ban: "realmod", mute: "realmod",
+  unmute: "realmod", unban: "realmod", softban: "realmod", tempban: "realmod",
+  lock: "realmod", unlock: "realmod", slowmode: "realmod", syncperms: "realmod",
+  warnlist: "realmod", warnclear: "realmod",
 };
 
 function catMeta(id) {

@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import GreetView from "@/pages/views/community/GreetView";
+import WelcomeLeaveView from "@/pages/views/community/WelcomeLeaveView";
+import LoggingView from "@/pages/views/community/LoggingView";
 import RolesView from "@/pages/views/community/RolesView";
 import MembersView from "@/pages/views/community/MembersView";
 import ChannelsView from "@/pages/views/community/ChannelsView";
@@ -19,7 +20,8 @@ export default function CommunityHub() {
     <div className="p-6">
       <Routes>
         <Route index element={<Navigate to="greet" replace />} />
-        <Route path="greet" element={<GreetView />} />
+        <Route path="greet" element={<WelcomeLeaveView />} />
+        <Route path="logging" element={<LoggingView />} />
         <Route path="roles" element={<RolesView />} />
         <Route path="members" element={<MembersView />} />
         <Route path="channels" element={<ChannelsView />} />

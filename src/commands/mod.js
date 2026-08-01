@@ -11,7 +11,7 @@ function usage(ctx, text) {
 }
 
 // ─── Warn escalation ──────────────────────────────────────────
-// Configurable per guild via $config realwarn / dashboard.
+// Configurable per guild via `$config warn` / dashboard.
 // Now supports: points-based thresholds, time-decay, probation role assignment.
 // Each step: { count or points, action, duration, probationRoleId?, probationDuration? }
 // count = based on total warning count, points = based on weighted severity sum.
@@ -39,7 +39,7 @@ const SEVERITY_LABELS = { 1: "Minor", 2: "Moderate", 3: "Severe", 4: "Critical",
 
 // Read the ladder for a guild (falls back to the default).
 function warnLadder(guildId) {
-  const cfg = config.resolve(guildId, "realwarn", { defaultSettings: { ladder: DEFAULT_WARN_LADDER } });
+  const cfg = config.resolve(guildId, "warn", { defaultSettings: { ladder: DEFAULT_WARN_LADDER } });
   const ladder = cfg.settings?.ladder;
   return Array.isArray(ladder) && ladder.length ? ladder : DEFAULT_WARN_LADDER;
 }
@@ -444,14 +444,14 @@ async function handleRealMod(message, args, type, ctx) {
   const { data } = ctx;
   const userId = resolveUserId(args[0]);
   const USAGE = {
-    warn:    `Usage: ${usage(ctx, "realwarn @user [severity] [reason]")}`,
-    mute:    `Usage: ${usage(ctx, "realmute @user [duration] [reason]")}`,
-    kick:    `Usage: ${usage(ctx, "realkick @user [reason]")}`,
-    ban:     `Usage: ${usage(ctx, "realban @user [reason]")}`,
-    softban: `Usage: ${usage(ctx, "realsoftban @user [reason]")}`,
-    tempban: `Usage: ${usage(ctx, "realtempban @user [duration] [reason]")}`,
+    warn:    `Usage: ${usage(ctx, "warn @user [severity] [reason]")}`,
+    mute:    `Usage: ${usage(ctx, "mute @user [duration] [reason]")}`,
+    kick:    `Usage: ${usage(ctx, "kick @user [reason]")}`,
+    ban:     `Usage: ${usage(ctx, "ban @user [reason]")}`,
+    softban: `Usage: ${usage(ctx, "softban @user [reason]")}`,
+    tempban: `Usage: ${usage(ctx, "tempban @user [duration] [reason]")}`,
   };
-  if (!userId) return message.reply({ embeds: [errorEmbed(USAGE[type] || `Usage: ${usage(ctx, `real${type} @user [reason]`)}`)] });
+  if (!userId) return message.reply({ embeds: [errorEmbed(USAGE[type] || `Usage: ${usage(ctx, `${type} @user [reason]`)}`)] });
   const member = await safe.orNull(message.guild.members.fetch(userId), `real mod fetch ${userId}`);
   if (!member) return message.reply({ embeds: [errorEmbed("User not found")] });
 
@@ -530,7 +530,7 @@ function getMutedRole(guild) {
 }
 
 async function handleRealUnmute(message, args, ctx) {
-  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realunmute @user")}`)] });
+  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "unmute @user")}`)] });
   const member = await safe.orNull(message.guild.members.fetch(userId), `real unmute fetch ${userId}`); if (!member) return message.reply({ embeds: [errorEmbed("User not found")] });
   const mutedRole = getMutedRole(message.guild);
   try {
@@ -556,7 +556,7 @@ async function slashRealUnmute(interaction, ctx) {
 }
 
 async function handleRealUnban(message, args, ctx) {
-  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realunban <userId> [reason]")}`)] });
+  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "unban <userId> [reason]")}`)] });
   const reason = args.slice(1).join(" ") || "No reason";
   try {
     greet.markModerationGatewayEvent(message.guild.id, userId, "unban");
@@ -587,7 +587,7 @@ async function slashRealUnban(interaction, ctx) {
 
 async function handleRealWarnList(message, args, ctx) {
   const { data } = ctx;
-  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realwarnlist @user")}`)] });
+  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "warnlist @user")}`)] });
   const member = await safe.orNull(message.guild.members.fetch(userId), `warnlist fetch ${userId}`);
   const username = member?.user.username ?? `<@${userId}>`;
   const list = data.getWarnings(message.guild.id, userId);
@@ -608,7 +608,7 @@ async function slashRealWarnList(interaction, ctx) {
 
 async function handleRealWarnClear(message, args, ctx) {
   const { data } = ctx;
-  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "realwarnclear @user")}`)] });
+  const userId = resolveUserId(args[0]); if (!userId) return message.reply({ embeds: [errorEmbed(`Usage: ${usage(ctx, "warnclear @user")}`)] });
   const member = await safe.orNull(message.guild.members.fetch(userId), `warnclear fetch ${userId}`);
   data.clearWarnings(message.guild.id, userId);
   await greet.logModerationAction(message.guild, {
@@ -999,47 +999,49 @@ function realModSlash(name, desc, withDuration = false, withSeverity = false) {
 }
 
 module.exports = [
-  // Fake mod (prefix-only)
-  { name: "warn",     description: "Fake warn",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"warn",c) },
-  { name: "kick",     description: "Fake kick",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"kick",c) },
-  { name: "ban",      description: "Fake ban",          category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"ban",c) },
-  { name: "mute",     description: "Fake mute",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"mute",c) },
-  { name: "unmute",   description: "Fake unmute",       category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unmute",c) },
-  { name: "unban",    description: "Fake unban",        category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unban",c) },
-  { name: "softban",  description: "Fake softban",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"softban",c) },
-  { name: "tempban",  description: "Fake tempban",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"tempban",c) },
-  { name: "timeout",  description: "Fake timeout",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"timeout",c) },
-  { name: "untimeout",description: "Fake untimeout",    category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"untimeout",c) },
-  { name: "lock",     description: "Fake lock",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"lock",c) },
-  { name: "unlock",   description: "Fake unlock",       category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unlock",c) },
-  { name: "slowmode", description: "Fake slowmode",     category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"slowmode",c) },
+  // Fake mod (prefix-only). The explicit `fake` prefix prevents a fake
+  // command from ever shadowing the real moderation command with the same
+  // action name: `$fakewarn` is fake, `$warn` is real.
+  { name: "fakewarn",     description: "Fake warn (no action)",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"warn",c) },
+  { name: "fakekick",     description: "Fake kick (no action)",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"kick",c) },
+  { name: "fakeban",      description: "Fake ban (no action)",          category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"ban",c) },
+  { name: "fakemute",     description: "Fake mute (no action)",         category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"mute",c) },
+  { name: "fakeunmute",  description: "Fake unmute (no action)",       category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unmute",c) },
+  { name: "fakeunban",   description: "Fake unban (no action)",        category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unban",c) },
+  { name: "fakesoftban", description: "Fake softban (no action)",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"softban",c) },
+  { name: "faketempban", description: "Fake tempban (no action)",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"tempban",c) },
+  { name: "faketimeout", description: "Fake timeout (no action)",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"timeout",c) },
+  { name: "fakeuntimeout", description: "Fake untimeout (no action)",  category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"untimeout",c) },
+  { name: "fakelock",     description: "Fake lock (no action)",        category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"lock",c) },
+  { name: "fakeunlock",   description: "Fake unlock (no action)",      category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"unlock",c) },
+  { name: "fakeslowmode", description: "Fake slowmode (no action)",    category: "fakemod", prefix: (m,a,c) => handleFakeMod(m,a,"slowmode",c) },
   // Real mod
-  { name: "realwarn",      description: "Warn a user",           prefix: (m,a,c) => handleRealMod(m,a,"warn",c),      slash: new SlashCommandBuilder().setName("realwarn").setDescription("Warn a user").addUserOption(o => o.setName("user").setDescription("Target user").setRequired(true)).addIntegerOption(o => o.setName("severity").setDescription("Severity (1-5, more = worse)").setRequired(false).setMinValue(1).setMaxValue(5)).addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)), execute: (i,c) => slashRealMod(i,c,"warn") },
-  { name: "realkick",      description: "Kick a user",           prefix: (m,a,c) => handleRealMod(m,a,"kick",c),      slash: realModSlash("realkick",      "Kick a user"),              execute: (i,c) => slashRealMod(i,c,"kick") },
-  { name: "realban",       description: "Ban a user",            prefix: (m,a,c) => handleRealMod(m,a,"ban",c),       slash: realModSlash("realban",       "Ban a user"),               execute: (i,c) => slashRealMod(i,c,"ban") },
-  { name: "realsoftban",   description: "Softban a user (ban + instant unban to clear messages)", prefix: (m,a,c) => handleRealMod(m,a,"softban",c), slash: realModSlash("realsoftban", "Softban a user (clears 7d of messages)"), execute: (i,c) => slashRealMod(i,c,"softban") },
-  { name: "realtempban",   description: "Temporarily ban a user", prefix: (m,a,c) => handleRealMod(m,a,"tempban",c), slash: realModSlash("realtempban", "Temporarily ban a user", true), execute: (i,c) => slashRealMod(i,c,"tempban") },
-  { name: "realmute",      description: "Mute a user",           prefix: (m,a,c) => handleRealMod(m,a,"mute",c),      slash: realModSlash("realmute",      "Mute a user", true),        execute: (i,c) => slashRealMod(i,c,"mute") },
-  { name: "realunmute",    description: "Unmute a user",         prefix: (m,a,c) => handleRealUnmute(m,a,c),          slash: realModSlash("realunmute",    "Unmute a user"),            execute: (i,c) => slashRealUnmute(i,c) },
-  { name: "realunban",     description: "Unban a user",          prefix: (m,a,c) => handleRealUnban(m,a,c),           slash: realModSlash("realunban",     "Unban a user"),             execute: (i,c) => slashRealUnban(i,c) },
-  { name: "realwarnlist",  description: "List warnings",         prefix: (m,a,c) => handleRealWarnList(m,a,c),        slash: realModSlash("realwarnlist",  "List warnings for a user"), execute: (i,c) => slashRealWarnList(i,c) },
-  { name: "realwarnclear", description: "Clear warnings",        prefix: (m,a,c) => handleRealWarnClear(m,a,c),       slash: realModSlash("realwarnclear", "Clear all warnings"),       execute: (i,c) => slashRealWarnClear(i,c) },
-  { name: "reallock",      description: "Lock this channel",     prefix: (m,a,c) => handleRealLock(m,a,false,c),      slash: new SlashCommandBuilder().setName("reallock").setDescription("Lock this channel").addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)),    execute: (i,c) => slashRealLock(i,false,c) },
-  { name: "realunlock",    description: "Unlock this channel",   prefix: (m,a,c) => handleRealLock(m,a,true,c),       slash: new SlashCommandBuilder().setName("realunlock").setDescription("Unlock this channel").addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)),  execute: (i,c) => slashRealLock(i,true,c) },
-  { name: "realslowmode",  description: "Set slowmode",          prefix: (m,a,c) => handleRealSlowmode(m,a,c),        slash: new SlashCommandBuilder().setName("realslowmode").setDescription("Set slowmode").addIntegerOption(o => o.setName("seconds").setDescription("Seconds (0-21600)").setRequired(true).setMinValue(0).setMaxValue(21600)), execute: (i,c) => slashRealSlowmode(i,c) },
+  { name: "warn",      description: "Warn a user",           prefix: (m,a,c) => handleRealMod(m,a,"warn",c),      slash: new SlashCommandBuilder().setName("warn").setDescription("Warn a user").addUserOption(o => o.setName("user").setDescription("Target user").setRequired(true)).addIntegerOption(o => o.setName("severity").setDescription("Severity (1-5, more = worse)").setRequired(false).setMinValue(1).setMaxValue(5)).addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)), execute: (i,c) => slashRealMod(i,c,"warn") },
+  { name: "kick",      description: "Kick a user",           prefix: (m,a,c) => handleRealMod(m,a,"kick",c),      slash: realModSlash("kick",      "Kick a user"),              execute: (i,c) => slashRealMod(i,c,"kick") },
+  { name: "ban",       description: "Ban a user",            prefix: (m,a,c) => handleRealMod(m,a,"ban",c),       slash: realModSlash("ban",       "Ban a user"),               execute: (i,c) => slashRealMod(i,c,"ban") },
+  { name: "softban",   description: "Softban a user (ban + instant unban to clear messages)", prefix: (m,a,c) => handleRealMod(m,a,"softban",c), slash: realModSlash("softban", "Softban a user (clears 7d of messages)"), execute: (i,c) => slashRealMod(i,c,"softban") },
+  { name: "tempban",   description: "Temporarily ban a user", prefix: (m,a,c) => handleRealMod(m,a,"tempban",c), slash: realModSlash("tempban", "Temporarily ban a user", true), execute: (i,c) => slashRealMod(i,c,"tempban") },
+  { name: "mute",      description: "Mute a user",           prefix: (m,a,c) => handleRealMod(m,a,"mute",c),      slash: realModSlash("mute",      "Mute a user", true),        execute: (i,c) => slashRealMod(i,c,"mute") },
+  { name: "unmute",    description: "Unmute a user",         prefix: (m,a,c) => handleRealUnmute(m,a,c),          slash: realModSlash("unmute",    "Unmute a user"),            execute: (i,c) => slashRealUnmute(i,c) },
+  { name: "unban",     description: "Unban a user",          prefix: (m,a,c) => handleRealUnban(m,a,c),           slash: realModSlash("unban",     "Unban a user"),             execute: (i,c) => slashRealUnban(i,c) },
+  { name: "warnlist",  description: "List warnings",         prefix: (m,a,c) => handleRealWarnList(m,a,c),        slash: realModSlash("warnlist",  "List warnings for a user"), execute: (i,c) => slashRealWarnList(i,c) },
+  { name: "warnclear", description: "Clear warnings",        prefix: (m,a,c) => handleRealWarnClear(m,a,c),       slash: realModSlash("warnclear", "Clear all warnings"),       execute: (i,c) => slashRealWarnClear(i,c) },
+  { name: "lock",      description: "Lock this channel",     prefix: (m,a,c) => handleRealLock(m,a,false,c),      slash: new SlashCommandBuilder().setName("lock").setDescription("Lock this channel").addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)),    execute: (i,c) => slashRealLock(i,false,c) },
+  { name: "unlock",    description: "Unlock this channel",   prefix: (m,a,c) => handleRealLock(m,a,true,c),       slash: new SlashCommandBuilder().setName("unlock").setDescription("Unlock this channel").addStringOption(o => o.setName("reason").setDescription("Reason").setRequired(false)),  execute: (i,c) => slashRealLock(i,true,c) },
+  { name: "slowmode",  description: "Set slowmode",          prefix: (m,a,c) => handleRealSlowmode(m,a,c),        slash: new SlashCommandBuilder().setName("slowmode").setDescription("Set slowmode").addIntegerOption(o => o.setName("seconds").setDescription("Seconds (0-21600)").setRequired(true).setMinValue(0).setMaxValue(21600)), execute: (i,c) => slashRealSlowmode(i,c) },
   { name: "syncperms",     description: "Sync channels with category permissions", prefix: (m,a,c) => handleSyncPerms(m,a,c), slash: syncPermsSlash(), execute: (i,c) => slashSyncPerms(i,c) },
 ];
 
 // Default permission levels (admins can override per-command via $config / dashboard).
 // kick/ban escalate to admin; everything else mod-gated by default.
-const ADMIN_DEFAULT = new Set(["ban", "kick", "realban", "realkick", "realsoftban", "realtempban", "syncperms"]);
+const ADMIN_DEFAULT = new Set(["ban", "kick", "softban", "tempban", "syncperms"]);
 for (const cmd of module.exports) {
   cmd.defaultPermission = ADMIN_DEFAULT.has(cmd.name) ? "admin" : "mod";
 }
 
 // Expose the configurable warn-escalation ladder so $config / the dashboard surface it.
-const realwarnDef = module.exports.find(c => c.name === "realwarn");
-if (realwarnDef) realwarnDef.defaultSettings = { ladder: DEFAULT_WARN_LADDER };
+const warnDef = module.exports.find(c => c.name === "warn");
+if (warnDef) warnDef.defaultSettings = { ladder: DEFAULT_WARN_LADDER };
 
 // ─── Probation & Tempban expiry cleanup (runs every 5 minutes) ────────────
 let cleanupTimer = null;
