@@ -16,7 +16,10 @@ function listEmbed(guildId) {
   if (!rows.length) return theme.embed(guildId, "info", "No active giveaways. Start one with `$giveaway start 1h 1 Nitro`.").setTitle("🎉 Giveaways");
   const lines = rows.map(g => {
     const endsUnix = Math.floor(Number(g.ends_at) / 1000);
-    return `**#${g.id}** — ${g.prize} • ${g.winners_count} winner${g.winners_count === 1 ? "" : "s"} • ${g.entry_count} entries • ends <t:${endsUnix}:R>`;
+    const req = [];
+    if (g.required_role_id) req.push(`<@&${g.required_role_id}>`);
+    if (g.required_level > 0) req.push(`lv${g.required_level}+`);
+    return `**#${g.id}** — ${g.prize} • ${g.winners_count} winner${g.winners_count === 1 ? "" : "s"} • ${g.entry_count} entries • ends <t:${endsUnix}:R>${req.length ? ` • req: ${req.join(" ")}` : ""}`;
   });
   return theme.embed(guildId, "info", lines.join("\n")).setTitle("🎉 Active Giveaways");
 }
@@ -56,11 +59,31 @@ module.exports = [
         if (!durationMs) return m.reply({ embeds: [theme.error(m.guild.id, "Invalid duration. Use e.g. `30m`, `2h`, `1d` (max 28d).")] });
         const winners = parseInt(args[2], 10);
         if (!Number.isInteger(winners) || winners < 1 || winners > 50) return m.reply({ embeds: [theme.error(m.guild.id, "Winners must be a number between 1 and 50.")] });
-        const prize = args.slice(3).join(" ").trim();
-        if (!prize) return m.reply({ embeds: [theme.error(m.guild.id, "Usage: `$giveaway start <duration> <winners> <prize>`.")] });
-        const gv = await giveaways.create(m.guild, m.channel.id, prize.slice(0, 256), winners, durationMs, m.author.id);
+        // Optional trailing flags: --role <mention|id> --level <n>
+        let requiredRoleId = null;
+        let requiredLevel = 0;
+        const rest = args.slice(3);
+        for (let i = 0; i < rest.length; i++) {
+          const flag = rest[i].toLowerCase();
+          if (flag === "--role" && rest[i + 1]) {
+            const mention = rest[i + 1].match(/^<@&(\d+)>$/);
+            const id = mention ? mention[1] : rest[i + 1];
+            if (/^\d{17,20}$/.test(id)) requiredRoleId = id;
+            i++;
+          } else if (flag === "--level" && rest[i + 1]) {
+            const lvl = parseInt(rest[i + 1], 10);
+            if (Number.isInteger(lvl) && lvl >= 1 && lvl <= 1000) requiredLevel = lvl;
+            i++;
+          }
+        }
+        const prize = rest.filter((_, i) => !["--role", "--level"].includes(rest[i].toLowerCase()) && !(i > 0 && ["--role", "--level"].includes(rest[i - 1].toLowerCase()))).join(" ").trim();
+        if (!prize) return m.reply({ embeds: [theme.error(m.guild.id, "Usage: `$giveaway start <duration> <winners> <prize> [--role @role] [--level 5]`.")] });
+        const gv = await giveaways.create(m.guild, m.channel.id, prize.slice(0, 256), winners, durationMs, m.author.id, { requiredRoleId, requiredLevel });
         if (!gv) return m.reply({ embeds: [theme.error(m.guild.id, "Couldn't post the giveaway — check my permissions in this channel.")] });
-        return m.reply({ embeds: [theme.success(m.guild.id, `Giveaway **#${gv.id}** started for **${prize}**! ${winners} winner${winners === 1 ? "" : "s"}.`)] });
+        const req = [];
+        if (requiredRoleId) req.push(`<@&${requiredRoleId}>`);
+        if (requiredLevel) req.push(`level ${requiredLevel}+`);
+        return m.reply({ embeds: [theme.success(m.guild.id, `Giveaway **#${gv.id}** started for **${prize}**! ${winners} winner${winners === 1 ? "" : "s"}${req.length ? ` (requires ${req.join(" · ")})` : ""}.`)] });
       }
 
       return m.reply({ embeds: [theme.embed(m.guild.id, "info", "Manage giveaways:\n`$giveaway start <duration> <winners> <prize>`\n`$giveaway end <id>`\n`$giveaway reroll <id>`\n`$giveaway list`").setTitle("🎉 Giveaways")] });
@@ -69,7 +92,9 @@ module.exports = [
       .addSubcommand(c => c.setName("start").setDescription("Start a giveaway in this channel")
         .addStringOption(o => o.setName("duration").setDescription("How long it runs, e.g. 30m, 2h, 1d").setRequired(true))
         .addIntegerOption(o => o.setName("winners").setDescription("Number of winners (1-50)").setRequired(true).setMinValue(1).setMaxValue(50))
-        .addStringOption(o => o.setName("prize").setDescription("What's being given away").setRequired(true)))
+        .addStringOption(o => o.setName("prize").setDescription("What's being given away").setRequired(true))
+        .addRoleOption(o => o.setName("required_role").setDescription("Only members with this role can enter (optional)"))
+        .addIntegerOption(o => o.setName("required_level").setDescription("Minimum leveling level to enter (optional)").setMinValue(1).setMaxValue(1000)))
       .addSubcommand(c => c.setName("end").setDescription("End a giveaway now and draw winners")
         .addIntegerOption(o => o.setName("id").setDescription("Giveaway ID").setRequired(true)))
       .addSubcommand(c => c.setName("reroll").setDescription("Reroll winners for an ended giveaway")
@@ -102,9 +127,14 @@ module.exports = [
       const winners = i.options.getInteger("winners");
       const prize = i.options.getString("prize").trim();
       if (!prize) return i.reply({ embeds: [theme.error(i.guild.id, "Prize is required.")], flags: 64 });
-      const gv = await giveaways.create(i.guild, i.channel.id, prize.slice(0, 256), winners, durationMs, i.user.id);
+      const requiredRoleId = i.options.getRole("required_role")?.id || null;
+      const requiredLevel = i.options.getInteger("required_level") || 0;
+      const gv = await giveaways.create(i.guild, i.channel.id, prize.slice(0, 256), winners, durationMs, i.user.id, { requiredRoleId, requiredLevel });
       if (!gv) return i.reply({ embeds: [theme.error(i.guild.id, "Couldn't post the giveaway — check my permissions in this channel.")], flags: 64 });
-      return i.reply({ embeds: [theme.success(i.guild.id, `Giveaway **#${gv.id}** started for **${prize}**! ${winners} winner${winners === 1 ? "" : "s"}.`)] });
+      const req = [];
+      if (requiredRoleId) req.push(`<@&${requiredRoleId}>`);
+      if (requiredLevel) req.push(`level ${requiredLevel}+`);
+      return i.reply({ embeds: [theme.success(i.guild.id, `Giveaway **#${gv.id}** started for **${prize}**! ${winners} winner${winners === 1 ? "" : "s"}${req.length ? ` (requires ${req.join(" · ")})` : ""}.`)] });
     },
   },
 ];

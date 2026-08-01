@@ -1,17 +1,29 @@
-// Social Connectors — announce new RSS / YouTube / Twitch posts to a channel.
-// A single setInterval tick (index.js) calls poll(client) every few minutes; it
-// walks every connector row, checks the source for something newer than the
-// stored `last_seen`, and posts to the connector's announce channel. State is
-// DB-only (no in-memory cache needed): the tick is infrequent and reads are
-// cheap, and keeping last_seen in SQLite makes announcements idempotent across
-// restarts. Each connector is polled inside its own try/catch so one broken
-// feed never stalls the rest of the loop.
+// Social Connectors — announce new RSS / YouTube / Twitch / Reddit / Bluesky
+// posts to a channel. A single setInterval tick (index.js) calls poll(client)
+// every few minutes; it walks every connector row, checks the source for
+// something newer than the stored `last_seen`, and posts to the connector's
+// announce channel. State is DB-only (no in-memory cache needed): the tick is
+// infrequent and reads are cheap, and keeping last_seen in SQLite makes
+// announcements idempotent across restarts. Each connector is polled inside its
+// own try/catch so one broken feed never stalls the rest of the loop.
+//
+// v2 additions: Reddit + Bluesky platforms, rich embed announcements (title +
+// color + thumbnail) and include/exclude keyword filters on the post title.
 const { EmbedBuilder } = require("discord.js");
 const db = require("./db");
 const safe = require("./safe");
 const settings = require("./settings");
 
 const DEFAULT_TEMPLATE = "📢 New post: **{title}**\n{link}";
+
+// Platform metadata for the dashboard (labels + target hints).
+const PLATFORM_META = {
+  rss:     { label: "RSS Feed" },
+  youtube: { label: "YouTube" },
+  twitch:  { label: "Twitch" },
+  reddit:  { label: "Reddit" },
+  bluesky: { label: "Bluesky" },
+};
 
 // ── HTTP helper (global fetch + timeout; no new deps) ─────────────────────
 async function fetchWithTimeout(url, opts = {}, ms = 10000) {
@@ -43,7 +55,7 @@ function decodeEntities(s) {
     .replace(/&amp;/g, "&");
 }
 
-// Returns { id, title, link } for the newest feed entry, or null.
+// Returns { id, title, link, image } for the newest feed entry, or null.
 function parseFirstFeedItem(xml) {
   const itemMatch = xml.match(/<item[\s>][\s\S]*?<\/item>/i) || xml.match(/<entry[\s>][\s\S]*?<\/entry>/i);
   if (!itemMatch) return null;
@@ -68,7 +80,14 @@ function parseFirstFeedItem(xml) {
     || link
     || title;
 
-  return { id: id || null, title, link: link || "" };
+  // First image (media:content / media:thumbnail / enclosure).
+  let image = null;
+  const mc = block.match(/<media:content[^>]*url=["']([^"']+)["']/i)
+    || block.match(/<media:thumbnail[^>]*url=["']([^"']+)["']/i)
+    || block.match(/<enclosure[^>]*url=["']([^"']+)["']/i);
+  if (mc) image = decodeEntities(mc[1]);
+
+  return { id: id || null, title, link: link || "", image };
 }
 
 // ── Twitch (Helix) ─────────────────────────────────────────────────────────
@@ -113,6 +132,72 @@ async function fetchTwitchStream(login) {
   return (json.data && json.data[0]) || null;
 }
 
+// ── Reddit (public JSON API) ───────────────────────────────────────────────
+// target is a subreddit name (with or without r/). No auth required, but the
+// API wants a descriptive User-Agent.
+async function fetchRedditPost(target) {
+  const sub = String(target).replace(/^\/?r\//, "").replace(/\/.*$/, "").trim().toLowerCase();
+  if (!sub) return null;
+  const res = await fetchWithTimeout(`https://www.reddit.com/r/${encodeURIComponent(sub)}/new.json?limit=1`, {
+    headers: { "User-Agent": "mittobot-social/1.0" },
+  });
+  if (!res.ok) throw new Error(`reddit HTTP ${res.status}`);
+  const json = await res.json();
+  const post = json?.data?.children?.[0]?.data;
+  if (!post) return null;
+  return {
+    id: `t3_${post.id}`,
+    title: post.title || "(untitled post)",
+    link: `https://www.reddit.com${post.permalink || ""}`,
+    image: (post.url_overridden_by_dest && /\.(png|jpe?g|gif|webp)$/i.test(post.url_overridden_by_dest)) ? post.url_overridden_by_dest : null,
+  };
+}
+
+// ── Bluesky (public ATProto API) ───────────────────────────────────────────
+// target is a handle (e.g. bsky.app). The public API needs no auth token.
+async function fetchBlueskyPost(target) {
+  const handle = String(target).trim().replace(/^@/, "");
+  if (!handle) return null;
+  const res = await fetchWithTimeout(
+    `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(handle)}&limit=1`,
+    { headers: { "User-Agent": "mittobot-social/1.0" } },
+  );
+  if (!res.ok) throw new Error(`bluesky HTTP ${res.status}`);
+  const json = await res.json();
+  const item = json?.feed?.[0];
+  const post = item?.post;
+  if (!post) return null;
+  const record = post.record || {};
+  const text = (record.text || "").slice(0, 300) || "(new post)";
+  const rkey = (post.uri || "").split("/").pop() || "";
+  let image = null;
+  try {
+    const embed = post.embed;
+    const img = embed?.images?.[0] || embed?.image;
+    if (img?.fullsize) image = img.fullsize;
+    else if (img?.image?.fullsize) image = img.image.fullsize;
+  } catch { /* keep null */ }
+  return {
+    id: post.cid || post.uri || text,
+    title: text,
+    link: `https://bsky.app/profile/${encodeURIComponent(handle)}/post/${rkey}`,
+    image,
+  };
+}
+
+// ── Keyword filters ────────────────────────────────────────────────────────
+// includeKeywords: when non-empty, the title must contain at least one.
+// excludeKeywords: when non-empty, the title must not contain any.
+// Case-insensitive substring matching.
+function passesFilters(connector, title) {
+  const text = String(title || "").toLowerCase();
+  const include = db.safeJsonParse(connector.include_keywords, []);
+  const exclude = db.safeJsonParse(connector.exclude_keywords, []);
+  if (Array.isArray(include) && include.length && !include.some(k => text.includes(String(k).toLowerCase()))) return false;
+  if (Array.isArray(exclude) && exclude.length && exclude.some(k => text.includes(String(k).toLowerCase()))) return false;
+  return true;
+}
+
 // ── Announcement rendering ─────────────────────────────────────────────────
 function renderTemplate(template, fields) {
   return String(template || DEFAULT_TEMPLATE)
@@ -123,9 +208,31 @@ function renderTemplate(template, fields) {
     .replace(/\{target\}/g, fields.target || "");
 }
 
+// Announce a post. When the connector has embed_enabled it sends a rich embed
+// (title/color/thumbnail) instead of the plain-text template.
 async function announce(client, connector, fields) {
   const channel = client.channels.cache.get(connector.announce_channel_id);
   if (!channel || typeof channel.send !== "function") return;
+  if (!passesFilters(connector, fields.title)) return;
+
+  const embedEnabled = connector.embed_enabled === 1 || connector.embed_enabled === true;
+  if (embedEnabled) {
+    const embed = new EmbedBuilder()
+      .setTitle(String(connector.embed_title || fields.title || "(new post)").slice(0, 256))
+      .setURL(fields.link || null)
+      .setDescription(fields.title && connector.embed_title ? String(fields.title).slice(0, 1000) : undefined)
+      .setTimestamp();
+    if (connector.embed_color && /^#?[0-9a-fA-F]{6}$/.test(String(connector.embed_color).replace("#", ""))) {
+      embed.setColor(parseInt(String(connector.embed_color).replace("#", ""), 16));
+    } else {
+      embed.setColor(0x5865f2);
+    }
+    if (fields.image) embed.setImage(fields.image);
+    embed.setFooter({ text: `${fields.platform} · ${fields.target}` });
+    await safe.send(channel, { embeds: [embed], allowedMentions: { parse: [] } }, `social embed (${connector.platform})`);
+    return;
+  }
+
   const content = renderTemplate(connector.message_template, fields);
   await safe.send(channel, { content, allowedMentions: { parse: ["roles", "users"] } }, `social announce (${connector.platform})`);
 }
@@ -147,6 +254,7 @@ async function pollRss(client, connector, feedUrl) {
   await announce(client, connector, {
     title: item.title,
     link: item.link,
+    image: item.image,
     platform: connector.platform,
     target: connector.target,
   });
@@ -165,6 +273,7 @@ async function pollTwitch(client, connector) {
   await announce(client, connector, {
     title: stream.title || `${connector.target} is live!`,
     link,
+    image: stream.thumbnail_url ? stream.thumbnail_url.replace("{width}", "640").replace("{height}", "360") : null,
     platform: connector.platform,
     target: connector.target,
   });
@@ -194,6 +303,22 @@ async function poll(client) {
         const { clientId, clientSecret } = twitchCreds();
         if (!clientId || !clientSecret) continue;
         nextSeen = await pollTwitch(client, c);
+      } else if (c.platform === "reddit") {
+        const post = await fetchRedditPost(c.target);
+        if (!post) { nextSeen = null; }
+        else if (!c.last_seen) { nextSeen = post.id; } // seed silently
+        else if (post.id !== c.last_seen) {
+          await announce(client, c, { title: post.title, link: post.link, image: post.image, platform: "reddit", target: c.target });
+          nextSeen = post.id;
+        }
+      } else if (c.platform === "bluesky") {
+        const post = await fetchBlueskyPost(c.target);
+        if (!post) { nextSeen = null; }
+        else if (!c.last_seen) { nextSeen = post.id; } // seed silently
+        else if (post.id !== c.last_seen) {
+          await announce(client, c, { title: post.title, link: post.link, image: post.image, platform: "bluesky", target: c.target });
+          nextSeen = post.id;
+        }
       }
       if (nextSeen !== null && nextSeen !== c.last_seen) {
         db.setSocialConnectorLastSeen(c.id, nextSeen);
@@ -212,10 +337,16 @@ function listEmbed(guildId) {
     embed.setDescription("No connectors yet. Add one from the dashboard **Community → Social** tab.");
     return embed;
   }
-  embed.setDescription(rows.map(r =>
-    `**#${r.id}** \`${r.platform}\` → <#${r.announce_channel_id}>\n\`${r.target}\`${r.enabled ? "" : " *(disabled)*"}`
-  ).join("\n\n"));
+  embed.setDescription(rows.map(r => {
+    const meta = PLATFORM_META[r.platform] || { label: r.platform };
+    const filters = [];
+    const inc = db.safeJsonParse(r.include_keywords, []);
+    const exc = db.safeJsonParse(r.exclude_keywords, []);
+    if (inc.length) filters.push(`include: ${inc.join(", ")}`);
+    if (exc.length) filters.push(`exclude: ${exc.join(", ")}`);
+    return `**#${r.id}** \`${meta.label}\` → <#${r.announce_channel_id}>\n\`${r.target}\`${r.enabled ? "" : " *(disabled)*"}${r.embed_enabled ? " *(embed)*" : ""}${filters.length ? `\nFilters: ${filters.join(" · ")}` : ""}`;
+  }).join("\n\n"));
   return embed;
 }
 
-module.exports = { poll, listEmbed, DEFAULT_TEMPLATE };
+module.exports = { poll, listEmbed, DEFAULT_TEMPLATE, PLATFORM_META };

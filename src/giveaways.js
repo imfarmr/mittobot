@@ -10,6 +10,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("
 const safe = require("./safe");
 const db = require("./db");
 const theme = require("./theme");
+const leveling = require("./leveling");
 
 // Build the "Enter" action row for an active giveaway. customId carries the id
 // so index.js's interactionCreate can route the click back to handleEnterButton.
@@ -21,6 +22,14 @@ function enterRow(id) {
       .setEmoji("🎉")
       .setStyle(ButtonStyle.Primary),
   );
+}
+
+// Requirement text (role / level) for embeds.
+function requirementText(gv) {
+  const parts = [];
+  if (gv.required_role_id) parts.push(`<@&${gv.required_role_id}>`);
+  if (gv.required_level > 0) parts.push(`level ${gv.required_level}+`);
+  return parts.length ? `\n**Requirement${parts.length === 1 ? "" : "s"}:** ${parts.join(" · ")}` : "";
 }
 
 // Render the giveaway embed. `ended`/`winnerIds` switch it to the finished state.
@@ -35,7 +44,7 @@ function buildEmbed(gv, { ended = false, winnerIds = [] } = {}) {
       .setFooter({ text: `Hosted by an admin • ID ${gv.id}` });
   }
   return theme.embed(gv.guild_id, "accent",
-    `**Prize:** ${gv.prize}\n**Winners:** ${gv.winners_count}\n**Ends:** <t:${endsUnix}:R> (<t:${endsUnix}:f>)\n\nClick **Enter** below to join!`)
+    `**Prize:** ${gv.prize}\n**Winners:** ${gv.winners_count}\n**Ends:** <t:${endsUnix}:R> (<t:${endsUnix}:f>)${requirementText(gv)}\n\nClick **Enter** below to join!`)
     .setTitle("🎉 Giveaway")
     .setFooter({ text: `ID ${gv.id} • Hosted by`, iconURL: undefined })
     .addFields({ name: "Host", value: `<@${gv.host_id}>`, inline: true });
@@ -44,7 +53,7 @@ function buildEmbed(gv, { ended = false, winnerIds = [] } = {}) {
 // Create + post a giveaway. Returns the stored row (with message_id) or null on
 // failure. We insert first so the row id can be embedded in the button customId,
 // then patch message_id after the announcement is sent.
-async function create(guild, channelId, prize, winnersCount, durationMs, hostId) {
+async function create(guild, channelId, prize, winnersCount, durationMs, hostId, options = {}) {
   const channel = guild?.channels?.cache?.get(channelId);
   if (!channel) return null;
   const now = Date.now();
@@ -58,6 +67,12 @@ async function create(guild, channelId, prize, winnersCount, durationMs, hostId)
     host_id: hostId,
     created_at: now,
   });
+  if (options.requiredRoleId || options.requiredLevel > 0) {
+    db.setGiveawayRequirements(id, {
+      requiredRoleId: options.requiredRoleId || null,
+      requiredLevel: options.requiredLevel || 0,
+    });
+  }
   const gv = db.getGiveaway(id);
   const sent = await safe.send(channel, { embeds: [buildEmbed(gv)], components: [enterRow(id)] }, "giveaway post");
   if (!sent?.id) {
@@ -69,25 +84,56 @@ async function create(guild, channelId, prize, winnersCount, durationMs, hostId)
   return db.getGiveaway(id);
 }
 
+// Does this user meet the giveaway's requirements? `member` is the GuildMember.
+// Returns { ok: true } or { ok: false, reason }.
+function meetsRequirements(gv, member) {
+  if (gv.required_role_id && member && !member.roles?.cache?.has(gv.required_role_id)) {
+    return { ok: false, reason: `you need the <@&${gv.required_role_id}> role to enter` };
+  }
+  if (gv.required_level > 0) {
+    let level = 0;
+    try {
+      const rank = leveling.getRankCardData ? leveling.getRankCardData(gv.guild_id, member?.id) : null;
+      level = rank?.level ?? 0;
+    } catch { level = 0; }
+    if (level < gv.required_level) {
+      return { ok: false, reason: `you need to be level **${gv.required_level}**+ to enter (you're level ${level})` };
+    }
+  }
+  return { ok: true };
+}
+
 // Record an entry. Returns "added" for a fresh entry, "duplicate" if already in,
-// or "closed"/"missing" when the giveaway can't be entered.
-function addEntry(giveawayId, userId) {
+// "requirements" when unmet, or "closed"/"missing" when the giveaway can't be entered.
+function addEntry(giveawayId, userId, member = null) {
   const gv = db.getGiveaway(giveawayId);
   if (!gv) return "missing";
   if (gv.ended) return "closed";
+  const check = meetsRequirements(gv, member);
+  if (!check.ok) return { status: "requirements", reason: check.reason };
   return db.addGiveawayEntry(giveawayId, userId) ? "added" : "duplicate";
 }
 
 // Pick up to `count` distinct random winners from the entrant pool.
 // Fisher-Yates partial shuffle — runtime code may use Math.random freely.
-function pickWinners(giveawayId, count) {
+// When the giveaway has requirements, non-qualifying members are excluded so
+// a role revocation or level reset can't crown an ineligible winner.
+function pickWinners(giveawayId, count, memberResolver = null) {
   const pool = db.getGiveawayEntries(giveawayId).map(r => r.user_id);
-  const n = Math.min(count, pool.length);
-  for (let i = 0; i < n; i++) {
-    const j = i + Math.floor(Math.random() * (pool.length - i));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+  const gv = db.getGiveaway(giveawayId);
+  let eligible = pool;
+  if (gv && (gv.required_role_id || gv.required_level > 0) && memberResolver) {
+    eligible = pool.filter(uid => {
+      const member = memberResolver(uid);
+      return meetsRequirements(gv, member).ok;
+    });
   }
-  return pool.slice(0, n);
+  const n = Math.min(count, eligible.length);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (eligible.length - i));
+    [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
+  }
+  return eligible.slice(0, n);
 }
 
 // Fetch the live announcement message (if it still exists).
@@ -104,7 +150,9 @@ async function endGiveaway(id, client) {
   const gv = db.getGiveaway(id);
   if (!gv) return { ok: false, error: "not_found" };
   if (gv.ended) return { ok: false, error: "already_ended" };
-  const winners = pickWinners(id, gv.winners_count);
+  const guild = client?.guilds?.cache?.get(gv.guild_id);
+  const memberResolver = guild ? (uid) => guild.members.cache.get(uid) || null : null;
+  const winners = pickWinners(id, gv.winners_count, memberResolver);
   db.markGiveawayEnded(id);
 
   const { channel, msg } = await fetchMessage(client, gv);
@@ -123,7 +171,9 @@ async function reroll(id, client) {
   const gv = db.getGiveaway(id);
   if (!gv) return { ok: false, error: "not_found" };
   if (!gv.ended) return { ok: false, error: "not_ended" };
-  const winners = pickWinners(id, gv.winners_count);
+  const guild = client?.guilds?.cache?.get(gv.guild_id);
+  const memberResolver = guild ? (uid) => guild.members.cache.get(uid) || null : null;
+  const winners = pickWinners(id, gv.winners_count, memberResolver);
   const { channel } = await fetchMessage(client, gv);
   if (channel) {
     const text = winners.length
@@ -141,7 +191,10 @@ async function handleEnterButton(interaction) {
   if (!Number.isInteger(id)) {
     return interaction.reply({ embeds: [theme.error(guildId, "That giveaway is no longer valid.")], flags: 64 });
   }
-  const result = addEntry(id, interaction.user.id);
+  const result = addEntry(id, interaction.user.id, interaction.member);
+  if (result && typeof result === "object" && result.status === "requirements") {
+    return interaction.reply({ embeds: [theme.error(guildId, `❌ Can't enter: ${result.reason}.`)], flags: 64 });
+  }
   const msg = {
     added: "✅ You're entered! Good luck. 🍀",
     duplicate: "You're already entered in this giveaway.",

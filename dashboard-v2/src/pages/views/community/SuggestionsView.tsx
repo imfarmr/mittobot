@@ -4,6 +4,7 @@ import { get, post, guildPath } from "@/lib/api";
 import { useGuild } from "@/hooks/useGuild";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -16,12 +17,13 @@ interface SuggestionsConfig {
   enabled: boolean;
   channelId?: string | null;
   anonymous: boolean;
+  cooldownSeconds?: number;
 }
 interface SuggestionRow {
   id: number;
   user_id: string;
   content: string;
-  status: "pending" | "approved" | "rejected" | "implemented";
+  status: "pending" | "approved" | "rejected" | "implemented" | "archived";
   upvotes: number;
   downvotes: number;
   staff_note?: string | null;
@@ -40,11 +42,13 @@ const STATUS_STYLES: Record<string, string> = {
   approved: "bg-success/15 text-success",
   rejected: "bg-destructive/15 text-destructive",
   implemented: "bg-accent/15 text-accent",
+  archived: "bg-muted/40 text-muted-foreground",
 };
 const DECISIONS: { label: string; status: string }[] = [
   { label: "Approve", status: "approved" },
   { label: "Reject", status: "rejected" },
   { label: "Implement", status: "implemented" },
+  { label: "Archive", status: "archived" },
 ];
 
 export default function SuggestionsView() {
@@ -80,12 +84,14 @@ export default function SuggestionsView() {
   const [enabled, setEnabled] = useState(false);
   const [channelId, setChannelId] = useState("");
   const [anonymous, setAnonymous] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (cfg) {
       setEnabled(cfg.enabled);
       setChannelId(cfg.channelId || "");
       setAnonymous(cfg.anonymous);
+      setCooldown(cfg.cooldownSeconds ?? 0);
     }
   }, [data]);
 
@@ -95,14 +101,16 @@ export default function SuggestionsView() {
   const dirty =
     enabled !== cfg!.enabled ||
     channelId !== (cfg!.channelId || "") ||
-    anonymous !== cfg!.anonymous;
+    anonymous !== cfg!.anonymous ||
+    cooldown !== (cfg!.cooldownSeconds ?? 0);
 
-  const handleSave = () => saveMutation.mutate({ enabled, channelId: channelId || null, anonymous });
+  const handleSave = () => saveMutation.mutate({ enabled, channelId: channelId || null, anonymous, cooldownSeconds: cooldown });
   const handleReset = () => {
     if (cfg) {
       setEnabled(cfg.enabled);
       setChannelId(cfg.channelId || "");
       setAnonymous(cfg.anonymous);
+      setCooldown(cfg.cooldownSeconds ?? 0);
       toast("Changes discarded");
     }
   };
@@ -137,6 +145,16 @@ export default function SuggestionsView() {
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <Switch checked={anonymous} onCheckedChange={setAnonymous} /> Anonymous submissions
             </label>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground" htmlFor="sugg-cooldown">Cooldown between submissions (seconds, 0 = off)</label>
+              <Input
+                id="sugg-cooldown"
+                type="number" min={0} max={86400}
+                className="w-24 text-xs font-mono"
+                value={cooldown}
+                onChange={e => setCooldown(Math.max(0, Math.min(86400, parseInt(e.target.value, 10) || 0)))}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>

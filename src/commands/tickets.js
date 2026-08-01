@@ -30,12 +30,14 @@ module.exports = [
       }
 
       if (sub === "close") {
-        const ok = await tickets.closeChannel(m.channel, m.author.id);
+        // Optional close reason: `$ticket close [reason...]`
+        const reason = args.slice(1).join(" ").trim().slice(0, 500) || null;
+        const ok = await tickets.closeChannel(m.channel, m.author.id, reason);
         if (!ok) return m.reply({ embeds: [theme.error(m.guild.id, "This channel is not an open ticket.")] });
-        return m.reply({ embeds: [theme.info(m.guild.id, "Closing ticket and archiving transcript…")] });
+        return m.reply({ embeds: [theme.info(m.guild.id, "Closing ticket and archiving transcript…" + (reason ? `\n**Reason:** ${reason}` : ""))] });
       }
 
-      return m.reply({ embeds: [theme.embed(m.guild.id, "info", "**Ticket commands**\n`$ticket panel` — post the support panel (Manage Server)\n`$ticket close` — close the current ticket").setTitle("🎫 Tickets")] });
+      return m.reply({ embeds: [theme.embed(m.guild.id, "info", "**Ticket commands**\n`$ticket panel` — post the support panel (Manage Server)\n`$ticket close [reason]` — close the current ticket with an optional reason\n`$ticket rate <stars>` — rate your last closed ticket").setTitle("🎫 Tickets")] });
     },
     slash: new SlashCommandBuilder().setName("ticket").setDescription("Post the support ticket panel or close a ticket")
       .addSubcommand(c => c.setName("panel").setDescription("Post the ticket panel in this channel (Manage Server)"))
@@ -53,7 +55,7 @@ module.exports = [
       }
 
       // close
-      const ok = await tickets.closeChannel(i.channel, i.user.id);
+      const ok = await tickets.closeChannel(i.channel, i.user.id, null);
       if (!ok) return i.reply({ embeds: [theme.error(i.guild.id, "This channel is not an open ticket.")], flags: 64 });
       return i.reply({ embeds: [theme.info(i.guild.id, "Closing ticket and archiving transcript…")], flags: 64 });
     },

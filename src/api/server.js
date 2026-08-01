@@ -1948,6 +1948,7 @@ function startApi(ctx) {
       guildId: guildInfo.guildId,
       hasGuild: guildInfo.hasGuild,
       tags: guildInfo.guildId ? dbMod.getTags(guildInfo.guildId) : [],
+      roles: guildInfo.roles,
     });
   });
 
@@ -1975,6 +1976,27 @@ function startApi(ctx) {
     if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
     dbMod.deleteTag(guildId, String(req.params.name || "").toLowerCase());
     res.json({ ok: true, tags: dbMod.getTags(guildId) });
+  });
+
+  // PATCH a tag: edit content, aliases, allowed roles, or transfer ownership.
+  app.patch("/api/tags/:name", requireAuth, (req, res) => {
+    const dbMod = require("../db");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    const guildId = guildInfo.guildId;
+    if (!guildId) return res.status(400).json({ error: "Bot is not in any guild yet" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
+    const name = String(req.params.name || "").toLowerCase();
+    const existing = dbMod.getTag(guildId, name);
+    if (!existing) return res.status(404).json({ error: "Tag not found" });
+    const b = req.body || {};
+    if (typeof b.content === "string") {
+      if (!b.content || b.content.length > 2000) return res.status(400).json({ error: "Content required (max 2000 chars)" });
+      dbMod.createTag(guildId, name, b.content, existing.created_by); // upsert keeps id/uses
+    }
+    if (Array.isArray(b.aliases)) dbMod.setTagAliases(guildId, name, b.aliases);
+    if (Array.isArray(b.allowedRoles)) dbMod.setTagAllowedRoles(guildId, name, b.allowedRoles);
+    if (typeof b.transferTo === "string" && /^\d{17,20}$/.test(b.transferTo)) dbMod.transferTag(guildId, name, b.transferTo);
+    res.json({ ok: true, tag: dbMod.getTag(guildId, name), tags: dbMod.getTags(guildId) });
   });
 
   // ─── Tickets ─────────────────────────────────────────────────────────────
@@ -2018,20 +2040,32 @@ function startApi(ctx) {
     const guildId = guildInfo.guildId;
     if (guildId && !userCanAccessGuild(req.user.sub, guildId, req.user.isOwner))
       return res.status(403).json({ error: "You don't have access to this guild" });
-    res.json({ tickets: guildId ? db.getOpenTickets(guildId) : [] });
+    const status = String(req.query.status || "open");
+    if (status === "closed") {
+      res.json({ tickets: guildId ? db.getClosedTickets(guildId, 50) : [], status });
+    } else {
+      res.json({ tickets: guildId ? db.getOpenTickets(guildId) : [], status });
+    }
   });
 
   // ─── Giveaways ─────────────────────────────────────────────────────────────
   app.get("/api/giveaways", requireAuth, (req, res) => {
     const giveaways = require("../giveaways");
+    const dbMod = require("../db");
     const guildInfo = getGuildInfo(reqGuildId(req));
     if (guildInfo.guildId && !userCanAccessGuild(req.user.sub, guildInfo.guildId, req.user.isOwner))
       return res.status(403).json({ error: "You don't have access to this guild" });
+    const status = String(req.query.status || "active");
+    let list = [];
+    if (guildInfo.guildId) {
+      list = status === "ended" ? dbMod.getEndedGiveaways(guildInfo.guildId, 25) : giveaways.listActive(guildInfo.guildId);
+    }
     res.json({
       guildId: guildInfo.guildId,
       hasGuild: guildInfo.hasGuild,
       channels: guildInfo.channels,
-      giveaways: guildInfo.guildId ? giveaways.listActive(guildInfo.guildId) : [],
+      giveaways: list,
+      status,
     });
   });
 
@@ -2084,6 +2118,7 @@ function startApi(ctx) {
     if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
     if (okChan(b.channelId)) patch.channelId = b.channelId || null;
     if (typeof b.anonymous === "boolean") patch.anonymous = b.anonymous;
+    if (Number.isInteger(b.cooldownSeconds) && b.cooldownSeconds >= 0 && b.cooldownSeconds <= 86400) patch.cooldownSeconds = b.cooldownSeconds;
     const next = suggestions.setConfig(guildId, patch);
     res.json({ ok: true, config: next });
   });
@@ -2124,12 +2159,14 @@ function startApi(ctx) {
     if (guildInfo.guildId && !userCanAccessGuild(req.user.sub, guildInfo.guildId, req.user.isOwner))
       return res.status(403).json({ error: "You don't have access to this guild" });
     const twitchReady = !!((settingsMod.get("twitchClientId") || process.env.TWITCH_CLIENT_ID) && (settingsMod.get("twitchClientSecret") || process.env.TWITCH_CLIENT_SECRET));
+    const social = require("../social");
     res.json({
       guildId: guildInfo.guildId,
       hasGuild: guildInfo.hasGuild,
       channels: guildInfo.channels,
       connectors: guildInfo.guildId ? dbMod.getSocialConnectors(guildInfo.guildId) : [],
       twitchReady,
+      platforms: social.PLATFORM_META || undefined,
     });
   });
 
@@ -2144,14 +2181,55 @@ function startApi(ctx) {
     const target = String(b.target || "").trim();
     const channelId = String(b.announceChannelId || "");
     const template = b.messageTemplate == null ? null : String(b.messageTemplate).slice(0, 1000);
-    if (!["rss", "youtube", "twitch"].includes(platform)) return res.status(400).json({ error: "platform must be rss, youtube, or twitch" });
+    if (!["rss", "youtube", "twitch", "reddit", "bluesky"].includes(platform)) return res.status(400).json({ error: "platform must be rss, youtube, twitch, reddit, or bluesky" });
     if (!target || target.length > 500) return res.status(400).json({ error: "target required (max 500 chars)" });
     if (platform === "rss" && !/^https?:\/\//i.test(target)) return res.status(400).json({ error: "RSS target must be a feed URL" });
+    if (platform === "youtube" && !/^UC[0-9A-Za-z_-]{22}$/.test(target)) return res.status(400).json({ error: "YouTube target must be a channel ID (starts with UC…)" });
     if (!/^\d{17,20}$/.test(channelId)) return res.status(400).json({ error: "Valid announce channel required" });
     if (!guildInfo.channels.some(c => c.id === channelId)) return res.status(400).json({ error: "Announce channel not found in this guild" });
     if (dbMod.getSocialConnectors(guildId).length >= 50) return res.status(400).json({ error: "Connector limit reached (50)" });
+
+    // createSocialConnector already returns the full row (with id).
     const created = dbMod.createSocialConnector(guildId, platform, target, channelId, template);
+    // Apply v2 options immediately if provided at creation time.
+    if (b.embedEnabled !== undefined || b.embedTitle !== undefined || b.embedColor !== undefined || b.includeKeywords !== undefined || b.excludeKeywords !== undefined) {
+      dbMod.updateSocialConnector(created.id, guildId, {
+        embedEnabled: b.embedEnabled,
+        embedTitle: b.embedTitle == null ? undefined : String(b.embedTitle).slice(0, 256),
+        embedColor: b.embedColor == null ? undefined : String(b.embedColor).slice(0, 9),
+        includeKeywords: Array.isArray(b.includeKeywords) ? b.includeKeywords.slice(0, 25) : undefined,
+        excludeKeywords: Array.isArray(b.excludeKeywords) ? b.excludeKeywords.slice(0, 25) : undefined,
+      });
+    }
     res.json({ ok: true, connector: created, connectors: dbMod.getSocialConnectors(guildId) });
+  });
+
+  // PATCH a connector: toggle enable, edit template/channel, embed options, filters.
+  app.patch("/api/social/:id", requireAuth, (req, res) => {
+    const dbMod = require("../db");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    const guildId = guildInfo.guildId;
+    if (!guildId) return res.status(400).json({ error: "Bot is not in any guild yet" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid connector id" });
+    const b = req.body || {};
+    const patch = {};
+    if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+    if (typeof b.announceChannelId === "string") {
+      if (!/^\d{17,20}$/.test(b.announceChannelId) || !guildInfo.channels.some(c => c.id === b.announceChannelId))
+        return res.status(400).json({ error: "Invalid announce channel" });
+      patch.announceChannelId = b.announceChannelId;
+    }
+    if (typeof b.messageTemplate === "string") patch.messageTemplate = b.messageTemplate.slice(0, 1000);
+    if (typeof b.embedEnabled === "boolean") patch.embedEnabled = b.embedEnabled;
+    if (typeof b.embedTitle === "string") patch.embedTitle = b.embedTitle.slice(0, 256);
+    if (typeof b.embedColor === "string") patch.embedColor = b.embedColor.slice(0, 9);
+    if (Array.isArray(b.includeKeywords)) patch.includeKeywords = b.includeKeywords.slice(0, 25);
+    if (Array.isArray(b.excludeKeywords)) patch.excludeKeywords = b.excludeKeywords.slice(0, 25);
+    const updated = dbMod.updateSocialConnector(id, guildId, patch);
+    if (!updated) return res.status(404).json({ error: "Connector not found" });
+    res.json({ ok: true, connector: updated, connectors: dbMod.getSocialConnectors(guildId) });
   });
 
   app.delete("/api/social/:id", requireAuth, (req, res) => {
@@ -2166,7 +2244,7 @@ function startApi(ctx) {
     res.json({ ok: true, connectors: dbMod.getSocialConnectors(guildId) });
   });
 
-  // ─── Music (read-only live playback state) ─────────────────────────────────
+  // ─── Music (live playback state + remote controls) ────────────────────────
   app.get("/api/music", requireAuth, (req, res) => {
     const music = require("../music");
     const guildInfo = getGuildInfo(reqGuildId(req));
@@ -2177,6 +2255,35 @@ function startApi(ctx) {
       hasGuild: guildInfo.hasGuild,
       state: music.getState(guildInfo.guildId || "_none"),
     });
+  });
+
+  // Remote playback controls from the dashboard. Body: { action, value? }
+  // action ∈ pause|resume|skip|stop|volume|repeat|autoplay|remove|clear|shuffle|skipto
+  app.post("/api/music/control", requireAuth, (req, res) => {
+    const music = require("../music");
+    const guildInfo = getGuildInfo(reqGuildId(req));
+    const guildId = guildInfo.guildId;
+    if (!guildId) return res.status(400).json({ error: "Bot is not in any guild yet" });
+    if (!userCanAccessGuild(req.user.sub, guildId, req.user.isOwner)) return res.status(403).json({ error: "You don't have access to this guild" });
+    const action = String((req.body || {}).action || "");
+    const value = (req.body || {}).value;
+    let result;
+    switch (action) {
+      case "pause": result = music.pause(guildId) ? { ok: true, paused: true } : { ok: false, error: "Nothing is playing" }; break;
+      case "resume": result = music.resume(guildId) ? { ok: true, paused: false } : { ok: false, error: "Nothing is paused" }; break;
+      case "skip": { const skipped = music.skip(guildId); result = skipped ? { ok: true, skipped: skipped.title } : { ok: false, error: "Nothing is playing" }; break; }
+      case "stop": result = music.stop(guildId) ? { ok: true } : { ok: false, error: "Not connected" }; break;
+      case "volume": { const v = music.setVolume(guildId, value); result = v != null ? { ok: true, volume: v } : { ok: false, error: "No session" }; break; }
+      case "repeat": { const m = music.setRepeat(guildId, String(value || "off")); result = m ? { ok: true, repeat: m } : { ok: false, error: "No session" }; break; }
+      case "autoplay": { const a = music.setAutoplay(guildId, value === true || value === "true" || value === 1 || value === "1"); result = a != null ? { ok: true, autoplay: a } : { ok: false, error: "No session" }; break; }
+      case "remove": { const removed = music.removeFromQueue(guildId, parseInt(value, 10)); result = removed ? { ok: true, removed: removed.title } : { ok: false, error: "Invalid position" }; break; }
+      case "clear": result = { ok: true, cleared: music.clearQueue(guildId) }; break;
+      case "shuffle": result = { ok: true, shuffled: music.shuffleQueue(guildId).length }; break;
+      case "skipto": { const jumped = music.skipTo(guildId, parseInt(value, 10)); result = jumped ? { ok: true, jumped: jumped.jumped.title } : { ok: false, error: "Invalid position" }; break; }
+      default: return res.status(400).json({ error: "Unknown action" });
+    }
+    if (!result.ok) return res.status(400).json(result);
+    res.json({ ...result, state: music.getState(guildId) });
   });
 
   // ─── Moderation Cases (filtered view over moderation_log) ─────────────────

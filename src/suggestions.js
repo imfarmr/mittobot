@@ -15,6 +15,7 @@ const STATUS_META = {
   approved:    { color: 0x00c776, emoji: "✅", label: "Approved" },
   rejected:    { color: 0xed4245, emoji: "❌", label: "Rejected" },
   implemented: { color: 0xeb459e, emoji: "🚀", label: "Implemented" },
+  archived:    { color: 0x99aab5, emoji: "📦", label: "Archived" },
 };
 const STATUSES = Object.keys(STATUS_META);
 
@@ -23,6 +24,7 @@ function defaults() {
     enabled: false,
     channelId: null,
     anonymous: false, // hide the submitter's identity on the board post
+    cooldownSeconds: 0, // per-user gap between submissions (0 = off)
   };
 }
 
@@ -34,6 +36,7 @@ async function load() {
         enabled: row.enabled === 1,
         channelId: row.channel_id,
         anonymous: row.anonymous === 1,
+        cooldownSeconds: row.cooldown_seconds ?? 0,
       };
     }
   } catch (e) {
@@ -53,8 +56,20 @@ function setConfig(guildId, patch) {
     enabled: next.enabled,
     channel_id: next.channelId,
     anonymous: next.anonymous,
+    cooldown_seconds: next.cooldownSeconds ?? 0,
   }).catch(e => console.error("[suggestions] persist:", e.message));
   return next;
+}
+
+// Per-user cooldown check. Returns { ok: true } or { ok: false, remainingMs }.
+function checkCooldown(guildId, userId) {
+  const cfg = getConfig(guildId);
+  const secs = Number(cfg.cooldownSeconds) || 0;
+  if (secs <= 0) return { ok: true };
+  const last = db.getLastSuggestionAt(guildId, userId);
+  const elapsed = Date.now() - last;
+  if (elapsed < secs * 1000) return { ok: false, remainingMs: secs * 1000 - elapsed };
+  return { ok: true };
 }
 
 // Vote buttons carry the suggestion id so index.js can route presses back here.
@@ -86,6 +101,8 @@ function buildEmbed(s, cfg) {
 async function create(guild, userId, content) {
   const cfg = getConfig(guild.id);
   if (!cfg.enabled || !cfg.channelId) return { error: "disabled" };
+  const cooldown = checkCooldown(guild.id, userId);
+  if (!cooldown.ok) return { error: "cooldown", remainingMs: cooldown.remainingMs };
   const channel = guild.channels.cache.get(cfg.channelId);
   if (!channel) return { error: "nochannel" };
 
@@ -144,4 +161,4 @@ function recent(guildId, limit = 25) {
   return db.getSuggestionsByGuild(guildId, limit);
 }
 
-module.exports = { load, getConfig, setConfig, create, setStatus, handleButton, recent, STATUSES, STATUS_META };
+module.exports = { load, getConfig, setConfig, checkCooldown, create, setStatus, handleButton, recent, STATUSES, STATUS_META };

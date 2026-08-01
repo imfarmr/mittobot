@@ -39,7 +39,7 @@ function DropdownMenuSubContent({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
     <DropdownMenuPrimitive.SubContent        className={cn(
-          "z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/60 bg-popover/95 backdrop-blur-2xl p-1.5 text-popover-foreground shadow-xl",
+          "z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-[8rem] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-border/60 bg-popover/95 backdrop-blur-2xl p-1.5 text-popover-foreground shadow-xl",
           className
         )}
       {...props}
@@ -57,7 +57,7 @@ function DropdownMenuContent({
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[8rem] overflow-hidden rounded-xl border border-border/60 bg-popover/95 backdrop-blur-2xl p-1.5 text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95",
+          "z-50 max-h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] min-w-[8rem] overflow-y-auto overflow-x-hidden overscroll-contain rounded-xl border border-border/60 bg-popover/95 backdrop-blur-2xl p-1.5 text-popover-foreground shadow-xl animate-in fade-in-0 zoom-in-95",
           className
         )}
         {...props}

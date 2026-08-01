@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
-import { Ticket, RefreshCw } from "lucide-react";
+import { Ticket, RefreshCw, Inbox, Star } from "lucide-react";
 import { toast } from "sonner";
 import { SaveBar } from "@/components/app/SaveBar";
 import { CustomSelect } from "@/components/app/CustomSelect";
@@ -25,6 +27,9 @@ interface TicketConfig {
 interface OpenTicket {
   id: number; channel_id: string; user_id: string; status: string; created_at: number;
 }
+interface ClosedTicket extends OpenTicket {
+  closed_at: number | null; closed_by: string | null; close_reason: string | null; rating: number | null;
+}
 interface TicketsData {
   guildId: string; hasGuild: boolean;
   channels: { id: string; name: string }[];
@@ -38,6 +43,7 @@ interface TicketsListData {
 export default function TicketsView() {
   const { guildId } = useGuild();
   const queryClient = useQueryClient();
+  const [ticketTab, setTicketTab] = useState<"open" | "closed">("open");
 
   const { data, isLoading } = useQuery<TicketsData>({
     queryKey: ["tickets", guildId],
@@ -46,8 +52,8 @@ export default function TicketsView() {
   });
 
   const { data: listData, refetch, isFetching } = useQuery<TicketsListData>({
-    queryKey: ["tickets-list", guildId],
-    queryFn: () => get(guildPath("/api/tickets/list", guildId)),
+    queryKey: ["tickets-list", guildId, ticketTab],
+    queryFn: () => get(guildPath(`/api/tickets/list?status=${ticketTab}`, guildId)),
     enabled: !!guildId,
   });
 
@@ -116,6 +122,7 @@ export default function TicketsView() {
   };
 
   const openTickets = listData?.tickets || [];
+  const closedTickets = ticketTab === "closed" ? (listData?.tickets as ClosedTicket[] | undefined) || [] : [];
 
   return (
     <div className="space-y-4">
@@ -165,36 +172,80 @@ export default function TicketsView() {
 
       <Card className="border-border/40 bg-card/40">
         <CardHeader className="flex flex-row items-center justify-between">
-          <div><CardTitle className="text-sm font-semibold">🎫 Open Tickets ({openTickets.length})</CardTitle></div>
-          <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`size-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Refresh
-          </Button>
+          <div>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Inbox className="size-4 text-primary" />
+              {ticketTab === "open" ? `Open Tickets (${openTickets.length})` : `Closed Tickets (${closedTickets.length})`}
+            </CardTitle>
+          </div>
+          <Tabs value={ticketTab} onValueChange={(v) => setTicketTab(v as "open" | "closed")}>
+            <TabsList>
+              <TabsTrigger value="open">Open</TabsTrigger>
+              <TabsTrigger value="closed">Closed</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </CardHeader>
         <CardContent className="p-0">
-          {openTickets.length === 0 ? (
-            <div className="py-8 text-center text-xs text-muted-foreground">No open tickets.</div>
+          <div className="border-b border-border/20 px-4 py-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`size-3.5 mr-1 ${isFetching ? "animate-spin" : ""}`} /> Refresh
+            </Button>
+          </div>
+          {ticketTab === "open" ? (
+            openTickets.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">No open tickets.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-border/30">
+                    <TableHead className="text-xs">#</TableHead>
+                    <TableHead className="text-xs">Channel</TableHead>
+                    <TableHead className="text-xs">Opened By</TableHead>
+                    <TableHead className="text-xs">Opened At</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {openTickets.map(t => {
+                    const channel = data.channels.find(c => c.id === t.channel_id);
+                    return (
+                      <TableRow key={t.id} className="border-b border-border/20">
+                        <TableCell className="text-xs font-mono">{t.id}</TableCell>
+                        <TableCell className="text-xs font-mono">#{channel?.name || t.channel_id}</TableCell>
+                        <TableCell className="text-xs font-mono text-muted-foreground">{t.user_id}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{t.created_at ? new Date(t.created_at).toLocaleString() : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )
+          ) : closedTickets.length === 0 ? (
+            <div className="py-8 text-center text-xs text-muted-foreground">No closed tickets yet.</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow className="border-b border-border/30">
                   <TableHead className="text-xs">#</TableHead>
-                  <TableHead className="text-xs">Channel</TableHead>
                   <TableHead className="text-xs">Opened By</TableHead>
-                  <TableHead className="text-xs">Opened At</TableHead>
+                  <TableHead className="text-xs">Closed By</TableHead>
+                  <TableHead className="text-xs">Reason</TableHead>
+                  <TableHead className="text-xs">Rating</TableHead>
+                  <TableHead className="text-xs">Closed At</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {openTickets.map(t => {
-                  const channel = data.channels.find(c => c.id === t.channel_id);
-                  return (
-                    <TableRow key={t.id} className="border-b border-border/20">
-                      <TableCell className="text-xs font-mono">{t.id}</TableCell>
-                      <TableCell className="text-xs font-mono">#{channel?.name || t.channel_id}</TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">{t.user_id}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{t.created_at ? new Date(t.created_at).toLocaleString() : "—"}</TableCell>
-                    </TableRow>
-                  );
-                })}
+                {closedTickets.map(t => (
+                  <TableRow key={t.id} className="border-b border-border/20">
+                    <TableCell className="text-xs font-mono">{t.id}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{t.user_id}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{t.closed_by || "—"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate" title={t.close_reason || ""}>{t.close_reason || "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {t.rating ? <Badge variant="outline" className="text-[10px]"><Star className="size-3 text-warning mr-1" />{t.rating}/5</Badge> : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{t.closed_at ? new Date(t.closed_at).toLocaleString() : "—"}</TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}

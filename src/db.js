@@ -579,7 +579,10 @@ function init() {
       content     TEXT NOT NULL,
       created_by  TEXT,
       uses        INTEGER DEFAULT 0,
-      created_at  BIGINT
+      created_at  BIGINT,
+      aliases     TEXT DEFAULT '[]',      -- JSON array of alias names
+      allowed_roles TEXT DEFAULT '[]',    -- JSON array of role ids (empty = everyone)
+      last_used   BIGINT                  -- epoch ms of last invocation
     );
     CREATE UNIQUE INDEX IF NOT EXISTS tags_guild_name ON tags (guild_id, name);
 
@@ -603,7 +606,10 @@ function init() {
       status      TEXT DEFAULT 'open',
       created_at  BIGINT,
       closed_at   BIGINT,
-      closed_by   TEXT
+      closed_by   TEXT,
+      close_reason TEXT,                -- staff-provided reason at close time
+      rating      INTEGER,              -- 1-5 survey rating from the opener (nullable)
+      rating_at   BIGINT                -- when the rating was submitted
     );
     CREATE INDEX IF NOT EXISTS idx_tickets_guild_status ON tickets(guild_id, status);
 
@@ -618,7 +624,9 @@ function init() {
       ends_at       BIGINT NOT NULL,     -- epoch ms deadline
       host_id       TEXT,
       ended         INTEGER DEFAULT 0,   -- 0 = running, 1 = drawn
-      created_at    BIGINT
+      created_at    BIGINT,
+      required_role_id  TEXT,            -- optional: only members with this role may enter
+      required_level    INTEGER DEFAULT 0 -- optional: minimum leveling level to enter
     );
     CREATE INDEX IF NOT EXISTS giveaways_due ON giveaways (ended, ends_at);
 
@@ -633,7 +641,8 @@ function init() {
       guild_id    TEXT PRIMARY KEY,
       enabled     INTEGER DEFAULT 0,
       channel_id  TEXT,
-      anonymous   INTEGER DEFAULT 0
+      anonymous   INTEGER DEFAULT 0,
+      cooldown_seconds INTEGER DEFAULT 0  -- per-user gap between submissions (0 = off)
     );
 
     CREATE TABLE IF NOT EXISTS suggestions (
@@ -675,13 +684,18 @@ function init() {
     CREATE TABLE IF NOT EXISTS social_connectors (
       id                  INTEGER PRIMARY KEY AUTOINCREMENT,
       guild_id            TEXT NOT NULL,
-      platform            TEXT NOT NULL,    -- 'rss' | 'youtube' | 'twitch'
-      target              TEXT NOT NULL,    -- feed URL / channel id / twitch login
+      platform            TEXT NOT NULL,    -- 'rss' | 'youtube' | 'twitch' | 'reddit' | 'bluesky'
+      target              TEXT NOT NULL,    -- feed URL / channel id / twitch login / subreddit / bsky handle
       announce_channel_id TEXT NOT NULL,
       last_seen           TEXT,
       message_template    TEXT,
       enabled             INTEGER DEFAULT 1,
-      created_at          BIGINT
+      created_at          BIGINT,
+      embed_enabled       INTEGER DEFAULT 0,   -- announce as a rich embed instead of plain text
+      embed_title         TEXT,                -- embed title (placeholders supported)
+      embed_color         TEXT,                -- hex color like '#5865F2'
+      include_keywords    TEXT DEFAULT '[]',   -- JSON array; announce only if title contains any
+      exclude_keywords    TEXT DEFAULT '[]'    -- JSON array; skip if title contains any
     );
     CREATE INDEX IF NOT EXISTS social_connectors_guild ON social_connectors (guild_id);
   `);
@@ -759,6 +773,25 @@ function init() {
   try { db.exec("ALTER TABLE economy_users ADD COLUMN fish_caught INTEGER DEFAULT 0"); } catch {}
   try { db.exec("ALTER TABLE economy_users ADD COLUMN mine_depth INTEGER DEFAULT 0"); } catch {}
   try { db.exec("ALTER TABLE economy_users ADD COLUMN trivia_streak INTEGER DEFAULT 0"); } catch {}
+  // Tags — alias + role restriction + last_used columns (v2 feature depth).
+  try { db.exec("ALTER TABLE tags ADD COLUMN aliases TEXT DEFAULT '[]'"); } catch {}
+  try { db.exec("ALTER TABLE tags ADD COLUMN allowed_roles TEXT DEFAULT '[]'"); } catch {}
+  try { db.exec("ALTER TABLE tags ADD COLUMN last_used BIGINT"); } catch {}
+  // Giveaways — entry requirements (role + level).
+  try { db.exec("ALTER TABLE giveaways ADD COLUMN required_role_id TEXT"); } catch {}
+  try { db.exec("ALTER TABLE giveaways ADD COLUMN required_level INTEGER DEFAULT 0"); } catch {}
+  // Tickets — close reason + 1-5 rating survey.
+  try { db.exec("ALTER TABLE tickets ADD COLUMN close_reason TEXT"); } catch {}
+  try { db.exec("ALTER TABLE tickets ADD COLUMN rating INTEGER"); } catch {}
+  try { db.exec("ALTER TABLE tickets ADD COLUMN rating_at BIGINT"); } catch {}
+  // Suggestions — per-user cooldown between submissions.
+  try { db.exec("ALTER TABLE suggestion_config ADD COLUMN cooldown_seconds INTEGER DEFAULT 0"); } catch {}
+  // Social connectors — rich embeds + keyword filters + new platforms.
+  try { db.exec("ALTER TABLE social_connectors ADD COLUMN embed_enabled INTEGER DEFAULT 0"); } catch {}
+  try { db.exec("ALTER TABLE social_connectors ADD COLUMN embed_title TEXT"); } catch {}
+  try { db.exec("ALTER TABLE social_connectors ADD COLUMN embed_color TEXT"); } catch {}
+  try { db.exec("ALTER TABLE social_connectors ADD COLUMN include_keywords TEXT DEFAULT '[]'"); } catch {}
+  try { db.exec("ALTER TABLE social_connectors ADD COLUMN exclude_keywords TEXT DEFAULT '[]'"); } catch {}
   // Custom roles — persist the full role object (not just role_id) so style,
   // color, name, and icon survive a restart. Pre-existing DBs only had role_id.
   try { db.exec("ALTER TABLE custom_roles ADD COLUMN style TEXT"); } catch {}
@@ -1174,8 +1207,35 @@ function deleteTag(guildId, name) {
 }
 
 function incrementTagUses(guildId, name) {
-  db.prepare("UPDATE tags SET uses = uses + 1 WHERE guild_id = ? AND name = ?").run(guildId, String(name).toLowerCase());
+  db.prepare("UPDATE tags SET uses = uses + 1, last_used = ? WHERE guild_id = ? AND name = ?").run(Date.now(), guildId, String(name).toLowerCase());
 }
+
+// Resolve a name OR alias to its canonical tag row (null when nothing matches).
+function getTagByAlias(guildId, name) {
+  const key = String(name).toLowerCase();
+  const direct = get("SELECT * FROM tags WHERE guild_id = ? AND name = ?", [guildId, key]);
+  if (direct) return direct;
+  return get("SELECT * FROM tags WHERE guild_id = ? AND aliases LIKE ?", [guildId, `%"${key}"%`]);
+}
+
+function setTagAliases(guildId, name, aliases) {
+  const clean = [...new Set((Array.isArray(aliases) ? aliases : []).map(String).map(a => a.toLowerCase()).filter(a => /^[a-z0-9_-]{1,32}$/.test(a)))].slice(0, 10);
+  db.prepare("UPDATE tags SET aliases = ? WHERE guild_id = ? AND name = ?").run(JSON.stringify(clean), guildId, String(name).toLowerCase());
+  return clean;
+}
+
+function setTagAllowedRoles(guildId, name, roleIds) {
+  const clean = [...new Set((Array.isArray(roleIds) ? roleIds : []).map(String).filter(id => /^\d{17,20}$/.test(id)))].slice(0, 50);
+  db.prepare("UPDATE tags SET allowed_roles = ? WHERE guild_id = ? AND name = ?").run(JSON.stringify(clean), guildId, String(name).toLowerCase());
+  return clean;
+}
+
+function transferTag(guildId, name, newOwnerId) {
+  const info = db.prepare("UPDATE tags SET created_by = ? WHERE guild_id = ? AND name = ?").run(newOwnerId, guildId, String(name).toLowerCase());
+  return info.changes > 0;
+}
+
+
 
 // ── Tickets ──────────────────────────────────────────────────────────────
 async function getAllTicketConfigs() {
@@ -1214,10 +1274,25 @@ function createTicket(guildId, channelId, userId) {
   ).run(guildId, channelId, userId, Date.now());
 }
 
-function closeTicket(id, closedBy, closedAt) {
+function closeTicket(id, closedBy, closedAt, reason = null) {
   db.prepare(
-    "UPDATE tickets SET status = 'closed', closed_by = ?, closed_at = ? WHERE id = ?"
-  ).run(closedBy, closedAt, id);
+    "UPDATE tickets SET status = 'closed', closed_by = ?, closed_at = ?, close_reason = ? WHERE id = ?"
+  ).run(closedBy, closedAt, reason ?? null, id);
+}
+
+// Record the opener's 1-5 rating after the ticket was closed.
+function setTicketRating(id, rating) {
+  const r = Math.min(Math.max(parseInt(rating, 10) || 0, 1), 5);
+  db.prepare("UPDATE tickets SET rating = ?, rating_at = ? WHERE id = ?").run(r, Date.now(), id);
+  return r;
+}
+
+function getClosedTickets(guildId, limit = 50) {
+  return query("SELECT * FROM tickets WHERE guild_id = ? AND status = 'closed' ORDER BY closed_at DESC LIMIT ?", [guildId, limit]);
+}
+
+function getTicket(id) {
+  return get("SELECT * FROM tickets WHERE id = ?", [id]);
 }
 
 function getOpenTicketByChannel(guildId, channelId) {
@@ -1267,9 +1342,20 @@ function getActiveGiveaways(guildId) {
   `, [guildId]);
 }
 
-// Giveaways past their deadline that haven't been drawn yet (for the tick).
-function getDueGiveaways(now) {
-  return query("SELECT * FROM giveaways WHERE ended = 0 AND ends_at <= ?", [now]);
+function setGiveawayRequirements(id, { requiredRoleId = null, requiredLevel = 0 } = {}) {
+  db.prepare("UPDATE giveaways SET required_role_id = ?, required_level = ? WHERE id = ?")
+    .run(requiredRoleId || null, Math.max(0, parseInt(requiredLevel, 10) || 0), id);
+}
+
+// Ended giveaways for the dashboard (with entry counts), newest first.
+function getEndedGiveaways(guildId, limit = 25) {
+  return query(`
+    SELECT g.*, (SELECT COUNT(*) FROM giveaway_entries e WHERE e.giveaway_id = g.id) AS entry_count
+    FROM giveaways g
+    WHERE g.guild_id = ? AND g.ended = 1
+    ORDER BY g.ends_at DESC
+    LIMIT ?
+  `, [guildId, limit]);
 }
 
 function markGiveawayEnded(id) {
@@ -1325,6 +1411,12 @@ function getSuggestion(id) {
 
 function getSuggestionsByGuild(guildId, limit = 25) {
   return query("SELECT * FROM suggestions WHERE guild_id = ? ORDER BY id DESC LIMIT ?", [guildId, limit]);
+}
+
+// Timestamp of the user's most recent suggestion in this guild (cooldown check).
+function getLastSuggestionAt(guildId, userId) {
+  const row = get("SELECT MAX(created_at) AS at FROM suggestions WHERE guild_id = ? AND user_id = ?", [guildId, userId]);
+  return row?.at ? Number(row.at) : 0;
 }
 
 function setSuggestionStatus(id, status, note) {
@@ -1402,6 +1494,39 @@ function createSocialConnector(guildId, platform, target, announceChannelId, mes
 // Guild-scoped delete so a dashboard client can only remove its own guild's rows.
 function deleteSocialConnector(id, guildId) {
   return db.prepare("DELETE FROM social_connectors WHERE id = ? AND guild_id = ?").run(id, guildId).changes > 0;
+}
+
+// Patch an existing connector (enable/disable, embed options, filters, template).
+function updateSocialConnector(id, guildId, patch) {
+  const existing = get("SELECT * FROM social_connectors WHERE id = ? AND guild_id = ?", [id, guildId]);
+  if (!existing) return null;
+  // Parse the stored keyword JSON before re-serializing so a patch that omits
+  // the filters never double-encodes the stored array (safeJsonParse already
+  // falls back to [] for non-array values).
+  const existingInclude = safeJsonParse(existing.include_keywords, []);
+  const existingExclude = safeJsonParse(existing.exclude_keywords, []);
+  const clean = {
+    announce_channel_id: patch.announceChannelId ?? existing.announce_channel_id,
+    message_template: patch.messageTemplate !== undefined ? patch.messageTemplate : existing.message_template,
+    enabled: patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : existing.enabled,
+    embed_enabled: patch.embedEnabled !== undefined ? (patch.embedEnabled ? 1 : 0) : existing.embed_enabled,
+    embed_title: patch.embedTitle !== undefined ? patch.embedTitle : existing.embed_title,
+    embed_color: patch.embedColor !== undefined ? patch.embedColor : existing.embed_color,
+    include_keywords: JSON.stringify(Array.isArray(patch.includeKeywords) ? patch.includeKeywords.slice(0, 25) : existingInclude),
+    exclude_keywords: JSON.stringify(Array.isArray(patch.excludeKeywords) ? patch.excludeKeywords.slice(0, 25) : existingExclude),
+  };
+  db.prepare(`
+    UPDATE social_connectors SET
+      announce_channel_id = ?, message_template = ?, enabled = ?,
+      embed_enabled = ?, embed_title = ?, embed_color = ?,
+      include_keywords = ?, exclude_keywords = ?
+    WHERE id = ? AND guild_id = ?
+  `).run(
+    clean.announce_channel_id, clean.message_template, clean.enabled,
+    clean.embed_enabled, clean.embed_title, clean.embed_color,
+    clean.include_keywords, clean.exclude_keywords, id, guildId
+  );
+  return get("SELECT * FROM social_connectors WHERE id = ?", [id]);
 }
 
 function setSocialConnectorLastSeen(id, lastSeen) {
@@ -2216,18 +2341,25 @@ module.exports = {
   // ── Tags ─────────────────────────────────────────────────────────────────
   getTags,
   getTag,
+  getTagByAlias,
   createTag,
   deleteTag,
   incrementTagUses,
+  setTagAliases,
+  setTagAllowedRoles,
+  transferTag,
 
   // ── Tickets ──────────────────────────────────────────────────────────────
   getAllTicketConfigs,
   setTicketConfig,
   createTicket,
   closeTicket,
+  setTicketRating,
+  getTicket,
   getOpenTicketByChannel,
   getOpenTicketCountForUser,
   getOpenTickets,
+  getClosedTickets,
 
   // ── Giveaways ────────────────────────────────────────────────────────────
   createGiveaway,
@@ -2235,10 +2367,12 @@ module.exports = {
   getGiveaway,
   deleteGiveaway,
   getActiveGiveaways,
+  getEndedGiveaways,
   getDueGiveaways,
   markGiveawayEnded,
   addGiveawayEntry,
   getGiveawayEntries,
+  setGiveawayRequirements,
 
   // ── Suggestions ──────────────────────────────────────────────────────────
   getAllSuggestionConfigs,
@@ -2247,6 +2381,7 @@ module.exports = {
   setSuggestionMessageId,
   getSuggestion,
   getSuggestionsByGuild,
+  getLastSuggestionAt,
   setSuggestionStatus,
   recordSuggestionVote,
 
@@ -2261,6 +2396,7 @@ module.exports = {
   getSocialConnector,
   createSocialConnector,
   deleteSocialConnector,
+  updateSocialConnector,
   setSocialConnectorLastSeen,
 
   // ── Moderation Cases ─────────────────────────────────────────────────────

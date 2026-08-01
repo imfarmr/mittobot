@@ -388,9 +388,13 @@ client.on("interactionCreate", async interaction => {
         return;
       }
     }
-    // Ticket buttons (ticket:create / ticket:close / ticket:closeconfirm / ticket:closecancel)
+    // Ticket buttons (ticket:create / ticket:close / ticket:closeconfirm / ticket:closecancel / ticket:rate:*)
     if (interaction.isButton() && interaction.customId.startsWith("ticket:")) {
       if (await tickets.handleButton(interaction)) return;
+    }
+    // Ticket close-reason modal (staff flow)
+    if (interaction.isModalSubmit() && interaction.customId === "ticket:closereason") {
+      if (await tickets.handleCloseReasonModal(interaction)) return;
     }
     // Giveaway entry button (customId "giveaway:enter:<id>")
     if (interaction.isButton() && interaction.customId.startsWith("giveaway:enter:")) {

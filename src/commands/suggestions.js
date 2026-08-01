@@ -23,6 +23,10 @@ async function submit(guildId, guild, userId, content, reply) {
   if (content.length > MAX_CONTENT) return reply(theme.error(guildId, `Suggestion too long (max ${MAX_CONTENT} chars).`));
   const res = await suggestions.create(guild, userId, content);
   if (res.error === "disabled") return reply(theme.error(guildId, "Suggestions aren't enabled here. An admin can enable them from the dashboard."));
+  if (res.error === "cooldown") {
+    const secs = Math.ceil((res.remainingMs || 0) / 1000);
+    return reply(theme.error(guildId, `⏳ You're posting suggestions too quickly. Try again in **${secs}s**.`));
+  }
   if (res.error === "nochannel" || !res.message) return reply(theme.error(guildId, "The suggestion channel is misconfigured. Ask an admin to fix it."));
   return reply(theme.success(guildId, `💡 Suggestion #${res.id} submitted!`));
 }

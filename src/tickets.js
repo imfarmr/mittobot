@@ -16,6 +16,9 @@ const {
   AttachmentBuilder,
   ChannelType,
   PermissionFlagsBits,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require("discord.js");
 const db = require("./db");
 const theme = require("./theme");
@@ -113,7 +116,37 @@ async function handleButton(interaction) {
   if (id === "ticket:close") return promptClose(interaction);
   if (id === "ticket:closeconfirm") return confirmClose(interaction);
   if (id === "ticket:closecancel") return cancelClose(interaction);
+  if (id.startsWith("ticket:rate:")) return recordRating(interaction);
   return false;
+}
+
+// Rating survey buttons: "ticket:rate:<ticketId>:<stars>" — DM'd to the opener
+// after the ticket is closed. Persists the 1-5 score on the ticket row.
+async function recordRating(interaction) {
+  const parts = interaction.customId.split(":");
+  const ticketId = parseInt(parts[2], 10);
+  const stars = parseInt(parts[3], 10);
+  if (!Number.isInteger(ticketId) || !Number.isInteger(stars) || stars < 1 || stars > 5) return true;
+  db.setTicketRating(ticketId, stars);
+  const row = db.getTicket(ticketId);
+  const starsText = "⭐".repeat(stars);
+  await safe.orNull(interaction.update({
+    embeds: [theme.embed(interaction.guild?.id, "info", `Thanks for rating your ticket experience **${starsText}**! Your feedback helps us improve.`).setTitle("🎫 Ticket Rating")],
+    components: [],
+  }), "tickets rating update");
+  if (row) {
+    const cfg = getConfig(row.guild_id);
+    if (cfg.transcriptChannelId) {
+      const guild = interaction.client.guilds.cache.get(row.guild_id);
+      const logChannel = guild?.channels.cache.get(cfg.transcriptChannelId);
+      if (logChannel) {
+        await safe.send(logChannel, {
+          embeds: [theme.embed(row.guild_id, "info", `**Ticket #${row.id}** rated **${starsText}** by <@${row.user_id}>.`).setTimestamp()],
+        }, "tickets rating log");
+      }
+    }
+  }
+  return true;
 }
 
 // ticket:create — spin up a private channel for the presser.
@@ -181,7 +214,8 @@ async function openTicket(interaction) {
   return true;
 }
 
-// ticket:close — ask for confirmation before archiving/deleting.
+// ticket:close — ask for a close reason (optional) via modal, then confirm.
+// The opener can close their own ticket too, but only staff get the reason modal.
 async function promptClose(interaction) {
   const guild = interaction.guild;
   if (!guild) return false;
@@ -190,6 +224,31 @@ async function promptClose(interaction) {
     await safe.orNull(interaction.reply({ embeds: [theme.error(guild.id, "This channel is not an open ticket.")], flags: 64 }), "tickets reply notticket");
     return true;
   }
+
+  // Staff (support role or Manage Channels) get the reason modal; the opener
+  // gets the simple confirm buttons.
+  const cfg = getConfig(guild.id);
+  const isStaff = interaction.member?.permissions?.has(PermissionFlagsBits.ManageChannels)
+    || (cfg.supportRoleId && interaction.member?.roles?.cache?.has(cfg.supportRoleId));
+  if (isStaff) {
+    const modal = new ModalBuilder()
+      .setCustomId("ticket:closereason")
+      .setTitle("Close Ticket")
+      .addComponents(
+        new ActionRowBuilder().addComponents(
+          new TextInputBuilder()
+            .setCustomId("reason")
+            .setLabel("Close reason (optional)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setMaxLength(500)
+            .setPlaceholder("Resolved, duplicate, no response…"),
+        ),
+      );
+    await safe.orNull(interaction.showModal(modal), "tickets show close modal");
+    return true;
+  }
+
   const confirmRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("ticket:closeconfirm").setLabel("Confirm Close").setStyle(ButtonStyle.Danger),
     new ButtonBuilder().setCustomId("ticket:closecancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
@@ -198,24 +257,38 @@ async function promptClose(interaction) {
   return true;
 }
 
+// Modal submit handler for the staff close-reason flow.
+async function handleCloseReasonModal(interaction) {
+  if (interaction.customId !== "ticket:closereason") return false;
+  const reason = (interaction.fields?.getTextInputValue?.("reason") || "").trim().slice(0, 500) || null;
+  const guild = interaction.guild;
+  if (!guild) return false;
+  await safe.orNull(interaction.deferUpdate(), "tickets defer close modal");
+  const sent = await safe.send(interaction.channel, {
+    embeds: [theme.info(guild.id, "Closing ticket and archiving transcript…" + (reason ? `\n**Reason:** ${reason}` : ""))],
+  }, "tickets close notice");
+  await closeChannel(interaction.channel, interaction.user.id, reason);
+  return true;
+}
+
 async function cancelClose(interaction) {
   await safe.orNull(interaction.update({ embeds: [theme.info(interaction.guild.id, "Close cancelled.")], components: [] }), "tickets cancel close");
   return true;
 }
 
-// ticket:closeconfirm — perform the actual archive + delete.
+// ticket:closeconfirm — perform the actual archive + delete (opener flow).
 async function confirmClose(interaction) {
   const guild = interaction.guild;
   if (!guild) return false;
   await safe.orNull(interaction.update({ embeds: [theme.info(guild.id, "Closing ticket and archiving transcript…")], components: [] }), "tickets ack close");
-  await closeChannel(interaction.channel, interaction.user.id);
+  await closeChannel(interaction.channel, interaction.user.id, null);
   return true;
 }
 
-// Shared close routine used by both the button flow and `$ticket close`.
+// Shared close routine used by the button flow and `$ticket close`.
 // Builds a transcript, posts it to the configured log channel, marks the row
 // closed, then deletes the channel after a short grace delay.
-async function closeChannel(channel, closedById) {
+async function closeChannel(channel, closedById, reason = null) {
   const guild = channel.guild;
   const cfg = getConfig(guild.id);
   const row = db.getOpenTicketByChannel(guild.id, channel.id);
@@ -223,20 +296,20 @@ async function closeChannel(channel, closedById) {
 
   // Mark closed first so a failed transcript post can't leave a zombie-open row.
   try {
-    db.closeTicket(row.id, closedById, Date.now());
+    db.closeTicket(row.id, closedById, Date.now(), reason);
   } catch (e) {
     console.error("[tickets] closeTicket:", e.message);
   }
 
   // Build a plain-text transcript from the channel history (newest DiscordAPI
   // returns messages newest-first, so we reverse for chronological order).
-  const transcript = await buildTranscript(channel, row);
+  const transcript = await buildTranscript(channel, row, reason, closedById);
   if (cfg.transcriptChannelId) {
     const logChannel = guild.channels.cache.get(cfg.transcriptChannelId);
     if (logChannel) {
       const file = new AttachmentBuilder(Buffer.from(transcript, "utf8"), { name: `ticket-${row.id}-transcript.txt` });
       const embed = theme.embed(guild.id, "info",
-        `**Ticket #${row.id}** closed.\n**Opened by:** <@${row.user_id}>\n**Closed by:** <@${closedById}>\n**Channel:** #${channel.name}`)
+        `**Ticket #${row.id}** closed.\n**Opened by:** <@${row.user_id}>\n**Closed by:** <@${closedById}>\n**Channel:** #${channel.name}${reason ? `\n**Reason:** ${reason}` : ""}`)
         .setTitle("🎫 Ticket Closed")
         .setTimestamp();
       await safe.send(logChannel, { embeds: [embed], files: [file] }, "tickets transcript");
@@ -247,17 +320,41 @@ async function closeChannel(channel, closedById) {
   setTimeout(() => {
     safe.orNull(channel.delete("Ticket closed"), "tickets delete channel");
   }, 5000);
+
+  // Rating survey DM to the opener (only real users; no bots).
+  try {
+    const opener = await safe.orNull(guild.members.fetch(row.user_id), "tickets fetch opener");
+    if (opener && !opener.user?.bot) {
+      const rowBuilder = new ActionRowBuilder().addComponents(
+        [1, 2, 3, 4, 5].map(stars =>
+          new ButtonBuilder()
+            .setCustomId(`ticket:rate:${row.id}:${stars}`)
+            .setLabel("⭐".repeat(stars))
+            .setStyle(stars <= 2 ? ButtonStyle.Danger : stars === 3 ? ButtonStyle.Secondary : ButtonStyle.Success),
+        ),
+      );
+      await safe.orNull(opener.send({
+        embeds: [theme.embed(guild.id, "info", "Your ticket has been closed. How was your experience? Tap a rating below — it only takes a second.").setTitle("🎫 Rate Your Ticket")],
+        components: [rowBuilder],
+      }), "tickets rating DM");
+    }
+  } catch (e) {
+    console.error("[tickets] rating DM:", e.message);
+  }
   return true;
 }
 
 // Fetch up to 100 messages and render a readable text transcript.
-async function buildTranscript(channel, row) {
+async function buildTranscript(channel, row, reason = null, closedById = null) {
+  const closedByName = closedById ? ` (${closedById})` : "";
   const header =
     `Transcript for ticket #${row.id}\n` +
     `Channel: #${channel.name} (${channel.id})\n` +
     `Opened by user: ${row.user_id}\n` +
     `Opened at: ${new Date(row.created_at).toISOString()}\n` +
+    `Closed by: ${closedById || "unknown"}${closedByName}\n` +
     `Closed at: ${new Date().toISOString()}\n` +
+    (reason ? `Close reason: ${reason}\n` : "") +
     "".padEnd(60, "─") + "\n\n";
 
   const fetched = await safe.orNull(channel.messages.fetch({ limit: 100 }), "tickets fetch transcript");
@@ -267,7 +364,7 @@ async function buildTranscript(channel, row) {
     .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
     .map(m => {
       const ts = new Date(m.createdTimestamp).toISOString();
-      const author = m.author ? `${m.author.tag}` : "Unknown";
+      const author = m.author ? `${m.author.username}#${m.author.discriminator === "0" ? "0000" : m.author.discriminator} (${m.author.id})` : "Unknown";
       let content = m.content || "";
       if (m.attachments?.size) content += ` [attachments: ${[...m.attachments.values()].map(a => a.url).join(", ")}]`;
       if (m.embeds?.length && !content) content = "[embed]";
@@ -284,6 +381,7 @@ module.exports = {
   postPanel,
   buildPanel,
   handleButton,
+  handleCloseReasonModal,
   closeChannel,
   MAX_OPEN_PER_USER,
 };
