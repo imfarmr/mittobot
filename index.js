@@ -756,6 +756,7 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
       leveling.load(),
       starboard.load(),
       birthdays.load(),
+      require("./src/ai/humanity").load(),
       tickets.load(),
       suggestions.load(),
     ]);

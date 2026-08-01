@@ -36,8 +36,8 @@ module.exports = [
           data.addAlphaUser(i.user.id, guildId, { codeUsed: codeOpt });
           await db.useAlphaCode(codeOpt, i.user.id);
           const user = await i.client.users.fetch(i.user.id);
-          user.send({ embeds: [embed("🧪 **Alpha experiments activated!**\nYou now have access to additional AI server management tools like role/channel management.\nUse `/experiments status` to check your status.")] }).catch(() => {});
-          return i.reply({ embeds: [embed("✅ **Alpha activated!** You now have access to experimental AI server management tools. Check your DMs for confirmation.")], ephemeral: true });
+          user.send({ embeds: [embed("🧪 **Alpha experiments activated!**\nYou now have access to experimental features: the AI **Humanity Layer** (the bot remembers you, has a mood, and talks with human pacing) plus additional AI server management tools like role/channel management.\nUse `/experiments status` to check your status.")] }).catch(() => {});
+          return i.reply({ embeds: [embed("✅ **Alpha activated!** You now have access to the AI Humanity Layer and experimental AI server management tools. Check your DMs for confirmation.")], ephemeral: true });
         }
         return i.reply({ embeds: [embed("⚠️ **Alpha Experiments**\nThis will activate experimental AI server management tools (role/channel management). These tools are in testing and may change.\n\nTo proceed, you'll need an alpha activation code from the server administrator.")], components: [
           new ActionRowBuilder().addComponents(
@@ -68,7 +68,7 @@ module.exports = [
             .addFields(
               { name: "Activated", value: activated ? "✅ Yes" : "❌ No", inline: true },
               { name: "Telemetry", value: optOut ? "🔴 Disabled" : "🟢 Enabled", inline: true },
-              { name: "Tools Available", value: activated ? "Server management (roles, channels)" : "None. Use `/experiments enable` to activate.", inline: false },
+              { name: "Unlocked", value: activated ? "AI Humanity Layer + server management (roles, channels)" : "None. Redeem a token with `/experiments enable <code>`.", inline: false },
             )],
           ephemeral: true,
         });

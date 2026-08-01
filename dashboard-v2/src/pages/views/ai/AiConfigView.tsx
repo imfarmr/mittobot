@@ -225,6 +225,44 @@ export default function AiConfigView() {
       </Card>
       </fieldset>
 
+      {/* Alpha — Humanity Layer (token-gated) */}
+      <Card className="border-border/40 bg-card/40">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            Humanity Layer
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">Alpha</span>
+          </CardTitle>
+          <CardDescription className="text-xs">Mood, relationships, pacing, journal — makes the AI feel alive</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-lg bg-background-alt/30 border border-border/20 p-3 text-[10px] text-muted-foreground leading-relaxed space-y-1.5">
+            <p>
+              <span className="font-semibold text-foreground">Token-gated per user.</span> Only members who redeemed an
+              alpha token get the Humanity Layer in their own AI conversations — it's not a server-wide toggle.
+            </p>
+            <p className="pt-1">
+              <span className="text-foreground">For members:</span> run <code className="font-mono text-[10px] bg-background/60 px-1 py-0.5 rounded">/experiments enable &lt;code&gt;</code> in Discord.
+            </p>
+            <p className="pt-1">
+              <span className="text-foreground">Generate tokens:</span> System → Alpha Experiments (owner only).
+            </p>
+          </div>
+          {data.humanity && (
+            <div className="rounded-lg bg-background-alt/30 border border-border/20 p-3 text-[10px] font-mono text-muted-foreground space-y-1">
+              <div>mood: <span className="text-foreground">{data.humanity.mood?.phrase || "—"}</span> <span className="opacity-60">(v {data.humanity.mood?.valence} · a {data.humanity.mood?.arousal})</span></div>
+              <div>relationships tracked: {data.humanity.relationshipCount}</div>
+              {Array.isArray(data.humanity.journal) && data.humanity.journal.length > 0 && (
+                <div className="space-y-0.5 pt-1 border-t border-border/20">
+                  {data.humanity.journal.slice(-2).map((d: any) => (
+                    <div key={d.date} className="truncate"><span className="opacity-60">{d.date}</span> · {d.entries.join(" · ")}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* System Prompt */}
       <fieldset disabled={!canEdit} className="disabled:opacity-60">
       <Card className="border-border/40 bg-card/40">

@@ -5,6 +5,7 @@ const { processMessageImages, buildContentParts } = require("./ai/images");
 const { getPersonality, DEFAULT_PERSONALITY } = require("./ai/personalities");
 const { extractMemoriesAsync } = require("./ai/memory-extractor");
 const { SAFE_ALLOWED_MENTIONS, sanitizeAiOutput } = require("./ai/sanitize-output");
+const humanity = require("./ai/humanity");
 const db = require("./db");
 
 const safe = require("./safe");
@@ -453,6 +454,24 @@ async function buildMessageHistory(message, ctx, limit = 8, userContent, images 
     }
   }
 
+  // ── Humanity Layer (alpha, token-gated) ───────────────────────────────
+  // Only users who redeemed an alpha token (see /experiments enable) get the
+  // AI's internal state — mood, relationship with the speaker, time of day,
+  // recent server journal, tone to mirror. Guilds check the (guild,user)
+  // activation; DMs fall back to any-guild activation so token holders keep
+  // it in private chats too (still no journal/relationships leak into DMs).
+  const humanityOn = message.guild
+    ? ctx.data.isAlphaActivated(message.author.id, message.guild.id)
+    : ctx.data.isAlphaUser(message.author.id);
+  if (humanityOn) {
+    system += humanity.buildContextBlock({
+      guildId: message.guild?.id || null,
+      userId: message.author.id,
+      displayName: message.member?.displayName || message.author.globalName || message.author.username || "this person",
+      userContent,
+    });
+  }
+
   return [{ role: "system", content: system }, ...history];
 }
 
@@ -822,14 +841,43 @@ async function handleAiMessage(message, ctx) {
     finalReply = sanitizeAiOutput(cleanResponse(finalReply, thinkingEnabled));
 
     const chunks = splitResponse(finalReply);
+    // Token-gated alpha: the speaker must have redeemed an alpha code.
+    const humanityEnabled = message.guild
+      ? ctx.data.isAlphaActivated(message.author.id, message.guild.id)
+      : ctx.data.isAlphaUser(message.author.id);
+    // Human pacing: when the Humanity Layer is on, pause before the first
+    // message like a real person reading + composing a reply. The typing
+    // indicator stays alive, so it reads as organic thinking time.
+    if (humanityEnabled) {
+      await new Promise(r => setTimeout(r, humanity.pauseBeforeReply({
+        userLen: (userContent || "").length,
+        replyLen: finalReply.length,
+        usedTools: toolInteractions.length,
+      })));
+    }
     for (let i = 0; i < chunks.length; i++) {
       if (i === 0) {
         await message.reply({ content: chunks[i], allowedMentions: SAFE_ALLOWED_MENTIONS });
       } else {
-        // Natural delay between multi-message responses (300-800ms)
-        await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
+        // Natural delay between multi-message responses — scaled with the
+        // chunk length when the Humanity Layer is on (typing weight).
+        const delay = humanityEnabled
+          ? humanity.chunkPause(chunks[i].length)
+          : 300 + Math.random() * 500;
+        await new Promise(r => setTimeout(r, delay));
         await message.channel.send({ content: chunks[i], allowedMentions: SAFE_ALLOWED_MENTIONS });
       }
+    }
+
+    // Humanity Layer bookkeeping: mood shift, relationship bump, journal
+    // entry — fire-and-forget so it never blocks or crashes the reply flow.
+    if (humanityEnabled) {
+      humanity.observeInteraction({
+        guildId: message.guild?.id || null,
+        userId: message.author.id,
+        userContent,
+        displayName: message.member?.displayName || message.author.globalName || message.author.username || "someone",
+      }).catch(err => console.error("[humanity] observe:", err.message));
     }
 
     // Update chatty cooldown after a successful response (only in chatty mode)

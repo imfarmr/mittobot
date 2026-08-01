@@ -121,6 +121,16 @@ const data = {
     return !!this.alphaUsers[`${guildId}:${userId}`];
   },
 
+  // Alpha-activated in ANY guild — used for DM contexts (no guild to scope to)
+  // so a token holder keeps Humanity Layer access in private chats too.
+  isAlphaUser(userId) {
+    const suffix = `:${userId}`;
+    for (const key of Object.keys(this.alphaUsers)) {
+      if (key.endsWith(suffix)) return true;
+    }
+    return false;
+  },
+
   isTelemetryOptedOut(userId, guildId) {
     return this.alphaUsers[`${guildId}:${userId}`]?.telemetryOptOut === true;
   },

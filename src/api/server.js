@@ -948,6 +948,14 @@ function startApi(ctx) {
         output.hasApiKey = false;
         output.apiKeyPreview = "";
       }
+      // Alpha Humanity Layer snapshot — current mood, relationship count, and
+      // recent journal, for the dashboard's Humanity card.
+      try {
+        const humanity = require("../ai/humanity");
+        output.humanity = humanity.snapshot(req.guildId);
+      } catch (err) {
+        console.error("[api] humanity snapshot:", err.message);
+      }
       res.json(output);
     } catch (err) {
       res.status(500).json({ error: err.message });

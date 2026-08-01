@@ -529,6 +529,26 @@ function init() {
       PRIMARY KEY (scope, target_id)
     );
 
+    -- Alpha Humanity Layer state: one row per guild holding the emotional
+    -- state (valence/arousal with decay) plus the rolling daily journal.
+    CREATE TABLE IF NOT EXISTS ai_humanity (
+      guild_id    TEXT PRIMARY KEY,
+      valence     REAL DEFAULT 0,
+      arousal     REAL DEFAULT 0.3,
+      updated_at  BIGINT DEFAULT 0,
+      journal     TEXT DEFAULT '[]'   -- JSON [{date:'YYYY-MM-DD', entries:[..]}]
+    );
+
+    -- Per-(guild,user) familiarity tracking for the Humanity Layer.
+    CREATE TABLE IF NOT EXISTS ai_relationships (
+      guild_id     TEXT NOT NULL,
+      user_id      TEXT NOT NULL,
+      interactions INTEGER DEFAULT 0,
+      first_seen   BIGINT DEFAULT 0,
+      last_seen    BIGINT DEFAULT 0,
+      PRIMARY KEY (guild_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS starboard_config (
       guild_id      TEXT PRIMARY KEY,
       enabled       INTEGER DEFAULT 0,
@@ -1358,6 +1378,12 @@ function getEndedGiveaways(guildId, limit = 25) {
   `, [guildId, limit]);
 }
 
+// Giveaways whose deadline has passed and haven't been drawn yet. Only returns
+// not-yet-drawn rows so the ticker is idempotent.
+function getDueGiveaways(now) {
+  return query("SELECT * FROM giveaways WHERE ended = 0 AND ends_at <= ?", [now]);
+}
+
 function markGiveawayEnded(id) {
   db.prepare("UPDATE giveaways SET ended = 1 WHERE id = ?").run(id);
 }
@@ -1986,6 +2012,38 @@ async function clearAiMemories({ guildId = null, userId = null } = {}) {
   return info.changes || 0;
 }
 
+// ── AI Humanity Layer (alpha) ────────────────────────────────────────────
+async function getHumanityStates() {
+  return query("SELECT * FROM ai_humanity");
+}
+
+async function upsertHumanityState(guildId, { valence, arousal, updatedAt, journalJson } = {}) {
+  db.prepare(`
+    INSERT INTO ai_humanity (guild_id, valence, arousal, updated_at, journal)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id) DO UPDATE SET
+      valence = excluded.valence,
+      arousal = excluded.arousal,
+      updated_at = excluded.updated_at,
+      journal = excluded.journal
+  `).run(guildId, Number(valence) || 0, typeof arousal === "number" && !Number.isNaN(arousal) ? arousal : 0.3, Number(updatedAt) || 0, journalJson || "[]");
+}
+
+async function getRelationships() {
+  return query("SELECT * FROM ai_relationships");
+}
+
+async function upsertRelationship(guildId, userId, { interactions, firstSeen, lastSeen } = {}) {
+  db.prepare(`
+    INSERT INTO ai_relationships (guild_id, user_id, interactions, first_seen, last_seen)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(guild_id, user_id) DO UPDATE SET
+      interactions = excluded.interactions,
+      first_seen = excluded.first_seen,
+      last_seen = excluded.last_seen
+  `).run(guildId, userId, Number(interactions) || 0, Number(firstSeen) || 0, Number(lastSeen) || 0);
+}
+
 // ── Stickies ─────────────────────────────────────────────────────────────
 async function getStickies() {
   return query("SELECT * FROM stickies");
@@ -2427,6 +2485,10 @@ module.exports = {
   addAiMemory,
   deleteAiMemory,
   clearAiMemories,
+  getHumanityStates,
+  upsertHumanityState,
+  getRelationships,
+  upsertRelationship,
 
   // ── Stickies ─────────────────────────────────────────────────────────────
   getStickies,
